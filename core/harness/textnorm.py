@@ -93,7 +93,7 @@ def map_confusables_mixed(s: str) -> tuple[str, int]:
         if "LATIN" in scripts and scripts & {"CYRILLIC", "GREEK"}:
             count += 1
             return tok.translate(_CONF_TABLE)
-        if scripts and scripts <= {"CYRILLIC", "GREEK"} and all(c in CONFUSABLES or not c.isalpha() for c in tok):
+        if len(tok) >= 4 and scripts and scripts <= {"CYRILLIC", "GREEK"} and all(c in CONFUSABLES or not c.isalpha() for c in tok):
             count += 1  # whole-token disguise e.g. "САРТ"
             return tok.translate(_CONF_TABLE)
         return tok

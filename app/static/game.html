@@ -1,0 +1,373 @@
+<!doctype html>
+<!--
+================================================================================
+BLOCK: LetterLoop Web Client (vanilla HTML5/JS, zero build step)
+--------------------------------------------------------------------------------
+Role & contracts
+  Thin presentation layer over /api/game/*. Sends ONLY tile coordinates;
+  the server (app/game_api.py) is the referee and the sole telemetry
+  emitter. Shows the events each response produced in a live telemetry tap.
+
+Key engineering mechanism
+  * Pointer-event path tracing with centre-radius hit testing (diagonals are
+    easy, accidental neighbours are ignored) and backtrack-by-revisit.
+  * Keyboard play: typed letters -> client DFS finds a board path for the word
+    -> the path (not the text) is submitted.
+  * localStorage only for per-device conveniences (user id, unlocked level),
+    every access wrapped in try/catch; the game works without it.
+
+Failure modes & 1-step mitigation
+  * Network error / 5xx -> toast + state unchanged; retrying is safe because
+    the server dedupes words and rejects finished attempts (409).
+  * Client clock drift -> server recomputes elapsed time; a "timeout" sent
+    early is recorded as "quit".
+================================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LetterLoop</title>
+<style>
+  :root {
+    --bg: #0f1221; --panel: #181c30; --panel-2: #20253d; --line: #2c3252; --text: #eef0fa; --muted: #9aa2c4;
+    --accent: #7c8cff; --accent-2: #4fd1c5; --good: #3ecf8e; --bad: #ff6b81; --warn: #ffb547;
+    --tile: #262c4a; --tile-text: #f4f5ff; --tile-sel: #7c8cff; --shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f3f4fa; --panel: #ffffff; --panel-2: #f0f2fb; --line: #dfe2f0; --text: #1b1e33; --muted: #5d6385;
+      --tile: #e8ebfa; --tile-text: #1b1e33; --shadow: 0 10px 30px rgba(40,50,110,.12);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .brand { font-weight: 800; font-size: 20px; letter-spacing: .3px; }
+  .brand span { color: var(--accent); }
+  .pill { font-size: 12px; color: var(--muted); background: var(--panel-2); border: 1px solid var(--line); padding: 3px 10px; border-radius: 999px; }
+  .spacer { flex: 1; }
+  main { display: grid; grid-template-columns: 220px minmax(320px, 1fr) 320px; gap: 18px; padding: 18px 20px; max-width: 1280px; margin: 0 auto; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; box-shadow: var(--shadow); }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 12px; }
+  .levels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .lvl { position: relative; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); border-radius: 12px; padding: 10px 0 8px; cursor: pointer; font-weight: 700; font-size: 16px; }
+  .lvl small { display: block; font-weight: 500; font-size: 10px; color: var(--muted); }
+  .lvl.done { border-color: var(--good); }
+  .lvl.current { outline: 2px solid var(--accent); }
+  .lvl.locked { opacity: .4; cursor: not-allowed; }
+  .lvl .hot { position: absolute; top: -6px; right: -6px; background: var(--bad); color: #fff; font-size: 9px; padding: 1px 5px; border-radius: 6px; }
+  .legend { margin-top: 12px; font-size: 12px; color: var(--muted); }
+  .board-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .hud { width: 100%; max-width: 440px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .hud .big { font-size: 26px; font-weight: 800; }
+  .bar { width: 100%; max-width: 440px; height: 8px; border-radius: 99px; background: var(--panel-2); overflow: hidden; }
+  .bar > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .25s; }
+  .bar.time > div { background: var(--warn); transition: width 1s linear; }
+  .current-word { height: 40px; font-size: 26px; font-weight: 800; letter-spacing: 4px; min-width: 120px; text-align: center; }
+  .current-word.ok { color: var(--good); } .current-word.no { color: var(--bad); }
+  .grid { display: grid; gap: 10px; touch-action: none; user-select: none; -webkit-user-select: none; width: min(440px, 100%); }
+  .tile { aspect-ratio: 1; display: grid; place-items: center; border-radius: 16px; background: var(--tile); color: var(--tile-text);
+          font-size: clamp(22px, 6vw, 34px); font-weight: 800; border: 2px solid transparent; transition: transform .08s, background .12s; }
+  .tile.sel { background: var(--tile-sel); color: #fff; transform: scale(.94); }
+  .tile.hint { border-color: var(--warn); }
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  button.btn { border: 1px solid var(--line); background: var(--panel-2); color: var(--text); padding: 9px 16px; border-radius: 12px; font-weight: 600; cursor: pointer; }
+  button.btn.primary { background: var(--accent); color: #fff; border-color: transparent; }
+  button.btn:disabled { opacity: .45; cursor: not-allowed; }
+  .found { display: flex; flex-wrap: wrap; gap: 6px; min-height: 40px; }
+  .chip { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 2px 8px; font-weight: 600; text-transform: uppercase; font-size: 13px; }
+  .tap { margin-top: 16px; max-height: 380px; overflow: auto; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .ev { padding: 6px 8px; border-left: 3px solid var(--accent); background: var(--panel-2); border-radius: 6px; margin-bottom: 6px; animation: pop .3s; }
+  .ev b { color: var(--accent-2); }
+  .ev.level_fail { border-color: var(--bad); } .ev.level_complete { border-color: var(--good); } .ev.ad_impression { border-color: var(--warn); }
+  @keyframes pop { from { opacity: 0; transform: translateY(-4px); } }
+  .hint-text { font-size: 13px; color: var(--warn); min-height: 18px; }
+  .overlay { position: fixed; inset: 0; background: rgba(5,7,18,.6); display: none; place-items: center; z-index: 10; padding: 16px; }
+  .overlay.show { display: grid; }
+  .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 24px; width: min(420px, 100%); text-align: center; box-shadow: var(--shadow); }
+  .modal h3 { margin: 0 0 6px; font-size: 24px; }
+  .modal p { color: var(--muted); margin: 6px 0 16px; }
+  .ad-box { border: 1px dashed var(--warn); border-radius: 12px; padding: 18px; margin: 12px 0; color: var(--warn); font-weight: 700; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--bad); color: #fff; padding: 8px 14px; border-radius: 10px; display: none; z-index: 20; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } .levels { grid-template-columns: repeat(6, 1fr); } }
+  @media (max-width: 520px) { main { padding: 12px 16px; } .levels { grid-template-columns: repeat(4, 1fr); } }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">Letter<span>Loop</span></div>
+  <div class="pill" id="userPill">connecting…</div>
+  <div class="pill" id="abPill">group –</div>
+  <div class="spacer"></div>
+  <div class="pill">server-refereed · telemetry → DuckDB</div>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Levels</h2>
+    <div class="levels" id="levels"></div>
+    <div class="legend">Badge = fleet fail rate &gt; 50% (seeded + live attempts).</div>
+  </section>
+
+  <section class="card board-wrap">
+    <div class="hud">
+      <div><div class="pill" id="lvlPill">Level –</div></div>
+      <div class="big" id="timer">–</div>
+      <div><span class="big" id="progress">0</span><span style="color:var(--muted)"> / <span id="target">0</span></span></div>
+    </div>
+    <div class="bar time"><div id="timeBar"></div></div>
+    <div class="current-word" id="current"></div>
+    <div class="grid" id="grid"></div>
+    <div class="bar"><div id="progBar"></div></div>
+    <div class="hint-text" id="hintText"></div>
+    <div class="controls">
+      <button class="btn" id="hintBtn">💡 Hint (watch ad)</button>
+      <button class="btn" id="quitBtn">Give up</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted)">Drag across adjacent tiles (diagonals count), or type a word and press Enter.</div>
+  </section>
+
+  <section class="card">
+    <h2>Found words</h2>
+    <div class="found" id="found"></div>
+    <h2 style="margin-top:18px">Live telemetry tap</h2>
+    <div class="tap" id="tap"></div>
+  </section>
+</main>
+
+<div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable: fine */ } },
+};
+const S = { user: null, session: null, levels: [], unlocked: store.get("ll_unlocked", 1), done: new Set(store.get("ll_done", [])),
+            attempt: null, path: [], typed: "", timerId: null, deadline: 0, busy: false };
+
+async function api(path, body) {
+  const res = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) { const t = await res.text(); throw new Error(`${res.status}: ${t.slice(0, 140)}`); }
+  return res.json();
+}
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 3200); }
+
+function tap(events) {
+  const box = $("tap");
+  for (const e of events || []) {
+    const d = document.createElement("div");
+    d.className = `ev ${e.event_name}`;
+    const extra = e.word ? ` word=<b>${e.word}</b>` : e.revenue_usd ? ` ${e.network} $${e.revenue_usd.toFixed(5)}` : "";
+    d.innerHTML = `<b>${e.event_name}</b>${e.level_id ? ` L${e.level_id}v${e.level_version}` : ""}${extra}<br><span style="color:var(--muted)">${e.ts.slice(11, 23)} · ${e.ab_group}</span>`;
+    box.prepend(d);
+  }
+  while (box.children.length > 60) box.lastChild.remove();
+}
+
+function renderLevels() {
+  const box = $("levels"); box.innerHTML = "";
+  for (const l of S.levels) {
+    const b = document.createElement("button");
+    const locked = l.level_id > S.unlocked;
+    b.className = "lvl" + (S.done.has(l.level_id) ? " done" : "") + (locked ? " locked" : "") + (S.attempt && S.attempt.level_id === l.level_id ? " current" : "");
+    b.innerHTML = `${l.level_id}<small>${l.n_rows}×${l.n_cols} · ${l.time_limit_s}s</small>` + (l.fail_rate > 0.5 ? `<span class="hot">${Math.round(l.fail_rate * 100)}%</span>` : "");
+    b.disabled = locked;
+    b.title = locked ? "Complete the previous level to unlock" : `target ${l.target_words} words · fail rate ${l.fail_rate ?? "n/a"}`;
+    b.onclick = () => startLevel(l.level_id);
+    box.appendChild(b);
+  }
+}
+
+function renderGrid() {
+  const g = $("grid"); g.innerHTML = "";
+  const rows = S.attempt.grid, n = rows[0].length;
+  g.style.gridTemplateColumns = `repeat(${n}, 1fr)`;
+  rows.forEach((row, r) => [...row].forEach((ch, c) => {
+    const t = document.createElement("div");
+    t.className = "tile"; t.dataset.r = r; t.dataset.c = c; t.textContent = ch;
+    g.appendChild(t);
+  }));
+}
+function paintSelection() {
+  const sel = new Set(S.path.map(([r, c]) => `${r},${c}`));
+  for (const t of $("grid").children) t.classList.toggle("sel", sel.has(`${t.dataset.r},${t.dataset.c}`));
+  $("current").className = "current-word";
+  $("current").textContent = S.path.map(([r, c]) => S.attempt.grid[r][c]).join("") || S.typed.toUpperCase();
+}
+
+// ---- pointer path tracing -------------------------------------------------
+function tileAt(x, y) {
+  const el = document.elementFromPoint(x, y);
+  if (!el || !el.classList.contains("tile")) return null;
+  const b = el.getBoundingClientRect(), cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+  if (Math.hypot(x - cx, y - cy) > b.width * 0.42) return null; // centre-radius hit test
+  return [+el.dataset.r, +el.dataset.c];
+}
+function extend(p) {
+  if (!p) return;
+  const last = S.path[S.path.length - 1];
+  const idx = S.path.findIndex(([r, c]) => r === p[0] && c === p[1]);
+  if (idx !== -1 && idx === S.path.length - 2) { S.path.pop(); return paintSelection(); }   // backtrack
+  if (idx !== -1) return;
+  if (last && Math.max(Math.abs(last[0] - p[0]), Math.abs(last[1] - p[1])) !== 1) return;
+  S.path.push(p); paintSelection();
+}
+let dragging = false;
+$("grid").addEventListener("pointerdown", (e) => { if (!S.attempt || S.busy) return; dragging = true; S.typed = ""; S.path = []; extend(tileAt(e.clientX, e.clientY)); });
+window.addEventListener("pointermove", (e) => { if (dragging) extend(tileAt(e.clientX, e.clientY)); });
+window.addEventListener("pointerup", () => { if (!dragging) return; dragging = false; submit(); });
+
+// ---- keyboard play: find a path for the typed word ------------------------
+function findPath(word) {
+  const g = S.attempt.grid, R = g.length, C = g[0].length, W = word.toUpperCase();
+  const seen = new Set();
+  function dfs(r, c, i, acc) {
+    if (g[r][c] !== W[i]) return null;
+    const key = `${r},${c}`; seen.add(key); acc.push([r, c]);
+    if (i === W.length - 1) return acc.slice();
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      const nr = r + dr, nc = c + dc;
+      if ((dr || dc) && nr >= 0 && nr < R && nc >= 0 && nc < C && !seen.has(`${nr},${nc}`)) { const p = dfs(nr, nc, i + 1, acc); if (p) return p; }
+    }
+    seen.delete(key); acc.pop(); return null;
+  }
+  for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) { const p = dfs(r, c, 0, []); if (p) return p; }
+  return null;
+}
+window.addEventListener("keydown", (e) => {
+  if (!S.attempt || S.busy || $("overlay").classList.contains("show")) return;
+  if (/^[a-z]$/i.test(e.key)) { S.typed += e.key; S.path = []; paintSelection(); }
+  else if (e.key === "Backspace") { S.typed = S.typed.slice(0, -1); paintSelection(); }
+  else if (e.key === "Enter" && S.typed) {
+    const p = findPath(S.typed);
+    if (!p) { flash(S.typed.toUpperCase(), false, "not on board"); S.typed = ""; return; }
+    S.path = p; S.typed = ""; submit();
+  }
+});
+
+function flash(text, ok, why) {
+  const cw = $("current"); cw.textContent = text + (why ? `  · ${why.replaceAll("_", " ")}` : ""); cw.className = "current-word " + (ok ? "ok" : "no");
+  setTimeout(() => { if (!S.path.length) { cw.textContent = ""; cw.className = "current-word"; } }, 900);
+}
+
+async function submit() {
+  const path = S.path; S.path = []; paintSelection();
+  if (path.length < 3 || !S.attempt) return;
+  try {
+    const r = await api("/api/game/level/word", { attempt_id: S.attempt.attempt_id, path });
+    tap(r.events);
+    flash(r.word.toUpperCase(), r.accepted, r.accepted ? "" : r.reason);
+    if (r.accepted) {
+      const chip = document.createElement("span"); chip.className = "chip"; chip.textContent = r.word; $("found").prepend(chip);
+      setProgress(r.found, r.target);
+    }
+    if (r.status === "completed") finish(true, r);
+  } catch (err) { toast(err.message); }
+}
+
+function setProgress(found, target) {
+  $("progress").textContent = found; $("target").textContent = target;
+  $("progBar").style.width = `${Math.min(100, (found / target) * 100)}%`;
+}
+
+async function startLevel(id) {
+  if (S.busy) return;
+  stopTimer(); hideModal();
+  try {
+    S.busy = true;
+    const r = await api("/api/game/level/start", { session_id: S.session, level_id: id });
+    S.attempt = r; S.path = []; S.typed = "";
+    tap(r.events);
+    $("lvlPill").textContent = `Level ${r.level_id} · v${r.level_version}`;
+    $("found").innerHTML = ""; $("hintText").textContent = ""; $("hintBtn").disabled = false; $("quitBtn").disabled = false;
+    setProgress(0, r.target_words);
+    renderGrid(); renderLevels(); paintSelection();
+    startTimer(r.time_limit_s);
+  } catch (err) { toast(err.message); } finally { S.busy = false; }
+}
+
+function startTimer(limit) {
+  S.deadline = Date.now() + limit * 1000;
+  const tick = () => {
+    const left = Math.max(0, (S.deadline - Date.now()) / 1000);
+    $("timer").textContent = `${Math.ceil(left)}s`;
+    $("timeBar").style.width = `${(left / limit) * 100}%`;
+    if (left <= 0) { stopTimer(); endLevel("timeout"); }
+  };
+  tick(); S.timerId = setInterval(tick, 250);
+}
+function stopTimer() { if (S.timerId) clearInterval(S.timerId); S.timerId = null; }
+
+async function endLevel(reason) {
+  if (!S.attempt) return;
+  try { const r = await api("/api/game/level/end", { attempt_id: S.attempt.attempt_id, reason }); tap(r.events); finish(false, r); }
+  catch (err) { toast(err.message); }
+}
+
+async function finish(won, r) {
+  stopTimer();
+  $("hintBtn").disabled = true; $("quitBtn").disabled = true;
+  const lvl = S.attempt.level_id;
+  if (won) {
+    S.done.add(lvl); S.unlocked = Math.max(S.unlocked, lvl + 1);
+    store.set("ll_done", [...S.done]); store.set("ll_unlocked", S.unlocked);
+  }
+  const hasNext = S.levels.some((l) => l.level_id === lvl + 1);
+  showModal(`
+    <h3>${won ? "Level complete! 🎉" : "Out of time"}</h3>
+    <p>${r.found} / ${r.target} words${!won && r.missed_examples?.length ? `<br>You could have found: <b>${r.missed_examples.slice(0, 5).join(", ")}</b>` : ""}</p>
+    <div class="ad-box" id="adBox">Loading sponsored break…</div>
+    <div class="controls">
+      <button class="btn" onclick="startLevel(${lvl})">Retry</button>
+      ${won && hasNext ? `<button class="btn primary" onclick="startLevel(${lvl + 1})">Next level →</button>` : ""}
+    </div>`);
+  try {
+    const ad = await api("/api/game/ad", { attempt_id: S.attempt.attempt_id, placement: "interstitial" });
+    tap(ad.events);
+    $("adBox").textContent = ad.filled ? `Interstitial · ${ad.filled.network} · eCPM $${ad.filled.ecpm}` : "No fill this time";
+  } catch (err) { $("adBox").textContent = "ad unavailable"; }
+  refreshLevels();
+}
+
+$("hintBtn").onclick = async () => {
+  if (!S.attempt) return;
+  $("hintBtn").disabled = true;
+  showModal(`<h3>Rewarded video</h3><div class="ad-box">▶ Sponsored clip playing…</div><p>Your hint unlocks in a moment.</p>`);
+  await new Promise((r) => setTimeout(r, 1400));
+  try {
+    const r = await api("/api/game/ad", { attempt_id: S.attempt.attempt_id, placement: "rewarded_hint" });
+    tap(r.events);
+    $("hintText").textContent = r.hint ? `Hint: a ${r.hint.length}-letter word starting with “${r.hint.starts_with}”` : "No more words to hint!";
+  } catch (err) { toast(err.message); }
+  hideModal();
+  $("hintBtn").disabled = false;
+};
+$("quitBtn").onclick = () => { stopTimer(); endLevel("quit"); };
+
+function showModal(html) { $("modal").innerHTML = html; $("overlay").classList.add("show"); }
+function hideModal() { $("overlay").classList.remove("show"); }
+
+async function refreshLevels() {
+  try { S.levels = (await api("/api/game/levels")).levels; renderLevels(); } catch (err) { toast(err.message); }
+}
+
+async function boot() {
+  try {
+    const r = await api("/api/game/session", { user_id: store.get("ll_user", null), platform: "web" });
+    S.user = r.user_id; S.session = r.session_id; store.set("ll_user", r.user_id);
+    $("userPill").textContent = r.user_id; $("abPill").textContent = `group ${r.ab_group}`;
+    tap(r.events);
+    await refreshLevels();
+    const first = Math.min(S.unlocked, S.levels.length || 1);
+    showModal(`<h3>Welcome to LetterLoop</h3><p>Trace words across touching tiles. Hit the target before the clock runs out.<br>Every move is refereed by the server and streamed to DuckDB.</p>
+      <div class="controls"><button class="btn primary" onclick="startLevel(${first})">Play level ${first}</button></div>`);
+  } catch (err) { toast(`Server unreachable: ${err.message}`); }
+}
+boot();
+</script>
+</body>
+</html>
