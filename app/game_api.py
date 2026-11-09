@@ -19,6 +19,12 @@ Key engineering mechanism
     words, and decides complete/fail itself.
   * Every event records level_version, so the Phase-2 Level Factory can
     attribute a live fail-rate spike to the exact version and roll it back.
+  * Feature flags (Phase 2): if a level has an ACTIVE flag, the player is
+    hashed into a stable 0-100 bucket; bucket < rollout_pct (capped at 20 by
+    the copilot, L1 and a DB CHECK) gets the candidate version. The first
+    exposure per (flag, user) is logged with the 7-day pre-period covariate
+    for CUPED. Rollback flips the flag status; the very next level_start
+    serves the control version.
   * Ads: a simulated 5-network mediation fill (same eCPM model as the seeder)
     priced server-side; rewarded hints reveal the most common unfound word.
 
@@ -176,13 +182,21 @@ def levels(request: Request) -> dict:
     st = state(request)
     rows = st.db.query("""
         SELECT l.level_id, l.version, l.n_rows, l.n_cols, l.target_words, l.time_limit_s, l.word_count, l.mean_zipf,
-               f.attempts, f.fail_rate
+               l.created_by, l.predicted_fail_rate, starts_with(coalesce(l.notes, ''), 'daily:') AS daily,
+               f.attempts, f.fail_rate,
+               (SELECT any_value(flag) FROM feature_flags ff WHERE ff.level_id = l.level_id AND ff.status = 'active') AS experiment
         FROM active_levels l LEFT JOIN (
-            SELECT level_id, count(*) attempts,
+            SELECT level_id, level_version, count(*) attempts,
                    round(avg((event_name = 'level_fail')::INT), 3) fail_rate
-            FROM events WHERE event_name IN ('level_fail', 'level_complete') GROUP BY 1) f USING (level_id)
-        ORDER BY level_id""")
+            FROM events WHERE event_name IN ('level_fail', 'level_complete') GROUP BY 1, 2) f
+          ON f.level_id = l.level_id AND f.level_version = l.version
+        ORDER BY l.level_id""")
     return {"levels": rows}
+
+
+def flag_bucket(flag: str, user_id: str) -> float:
+    """Deterministic 0-100 bucket: a user always sees the same variant of a flag."""
+    return int(hashlib.sha256(f"{flag}:{user_id}".encode()).hexdigest()[:8], 16) % 10_000 / 100
 
 
 @router.post("/session")
@@ -210,13 +224,30 @@ def level_start(body: LevelStartIn, request: Request) -> dict:
     rows = st.db.query("SELECT * FROM active_levels WHERE level_id = ?", [body.level_id])
     if not rows:
         raise HTTPException(404, f"level {body.level_id} has no live version")
-    lv = rows[0]
+    lv, variant, flag = rows[0], None, None
+    flags = st.db.query("SELECT flag, treatment_version, rollout_pct FROM feature_flags WHERE level_id = ? AND status = 'active'",
+                        [body.level_id])
+    if flags:
+        flag = flags[0]["flag"]
+        variant = "treatment" if flag_bucket(flag, s.user_id) < flags[0]["rollout_pct"] else "control"
+        if variant == "treatment":
+            t = st.db.query("SELECT * FROM levels WHERE level_id = ? AND version = ?", [body.level_id, flags[0]["treatment_version"]])
+            if t:
+                lv = t[0]
+        with st.db.cursor() as con:
+            seen = con.execute("SELECT 1 FROM experiment_exposures WHERE flag = ? AND user_id = ?", [flag, s.user_id]).fetchone()
+            if not seen:
+                pre = con.execute("""SELECT count(*) FROM events WHERE user_id = ? AND event_name = 'level_complete'
+                                     AND ts >= ?::TIMESTAMP - INTERVAL 7 DAY""", [s.user_id, now()]).fetchone()[0]
+                con.execute("INSERT INTO experiment_exposures VALUES (?, ?, ?, NULL, ?, ?, NULL, NULL, 'live')",
+                            [flag, s.user_id, variant, now(), float(pre)])
     a = Attempt(f"la_{uuid.uuid4().hex[:12]}", s, lv["level_id"], lv["version"], parse_grid(lv["grid"]),
                 set(json.loads(lv["valid_words"])), lv["target_words"], lv["time_limit_s"])
     with st.lock:
         st.attempts[a.attempt_id] = a
-    ev = emit(st, "level_start", s, a, target=a.target, time_limit_s=a.time_limit_s)
-    return {"attempt_id": a.attempt_id, "level_id": a.level_id, "level_version": a.version,
+    extra = {"experiment": flag, "variant": variant} if flag else {}
+    ev = emit(st, "level_start", s, a, target=a.target, time_limit_s=a.time_limit_s, **extra)
+    return {"attempt_id": a.attempt_id, "level_id": a.level_id, "level_version": a.version, **extra,
             "grid": ["".join(r) for r in a.grid], "target_words": a.target, "time_limit_s": a.time_limit_s,
             "total_words": len(a.valid), "events": [ev]}
 

@@ -26,7 +26,9 @@ Failure modes & 1-step mitigation
     live fail-rate spike).
   * Publishing an unverified grid -> publish_version() re-solves the grid and
     refuses if the declared word list differs or target > solvable words.
-  * Rolling back the only version -> refused (a level must always exist).
+  * Rolling back the only version -> refused (a level must always exist);
+    a brand-new daily level with no fallback is RETIRED instead
+    (set_version_status), which removes it from `active_levels`.
 ================================================================================
 """
 from __future__ import annotations
@@ -106,19 +108,25 @@ def build_seed_levels(lex: Lexicon, trie: Trie | None = None) -> list[dict]:
 
 LEVEL_COLS = ["level_id", "version", "grid", "n_rows", "n_cols", "target_words", "time_limit_s",
               "valid_words", "word_count", "mean_zipf", "branching_factor", "status",
-              "created_by", "created_at", "notes"]
+              "created_by", "created_at", "notes", "predicted_fail_rate"]
 
 
 def insert_levels(con, levels: list[dict]) -> None:
     con.executemany(
         f"INSERT INTO levels ({','.join(LEVEL_COLS)}) VALUES ({','.join('?' * len(LEVEL_COLS))})",
-        [[lv[c] for c in LEVEL_COLS] for lv in levels],
+        [[lv.get(c) for c in LEVEL_COLS] for lv in levels],
     )
 
 
 def publish_version(con, lex: Lexicon, trie: Trie, level_id: int, grid: str, target_words: int,
-                    time_limit_s: int, created_by: str = "level_factory", notes: str = "") -> dict:
-    """Append a new live version after re-verifying solvability (solver gate)."""
+                    time_limit_s: int, created_by: str = "level_factory", notes: str = "",
+                    status: str = "live", predicted_fail_rate: float | None = None) -> dict:
+    """Append a new version after re-verifying solvability (solver gate).
+
+    status="live" serves it to everyone at once; status="candidate" stores it
+    for a feature-flagged experiment without changing `active_levels`."""
+    if status not in ("live", "candidate"):
+        raise ValueError(f"cannot publish with status {status!r}")
     g = parse_grid(grid)
     res = solve(g, trie)
     if target_words > len(res.words):
@@ -129,8 +137,8 @@ def publish_version(con, lex: Lexicon, trie: Trie, level_id: int, grid: str, tar
         "level_id": level_id, "version": ver, "grid": grid_to_str(g), "n_rows": len(g), "n_cols": len(g[0]),
         "target_words": target_words, "time_limit_s": time_limit_s, "valid_words": json.dumps(words),
         "word_count": len(words), "mean_zipf": round(statistics.mean(lex.zipf[w] for w in words), 3) if words else 0,
-        "branching_factor": res.branching_factor, "status": "live", "created_by": created_by,
-        "created_at": datetime.now(), "notes": notes,
+        "branching_factor": res.branching_factor, "status": status, "created_by": created_by,
+        "created_at": datetime.now(), "notes": notes, "predicted_fail_rate": predicted_fail_rate,
     }
     insert_levels(con, [row])
     return row
@@ -145,3 +153,17 @@ def rollback_level(con, level_id: int, reason: str = "") -> dict:
     con.execute("UPDATE levels SET status='rolled_back', notes=concat(coalesce(notes,''), ?) WHERE level_id=? AND version=?",
                 [f" | rolled back: {reason}", level_id, bad])
     return {"level_id": level_id, "rolled_back_version": bad, "active_version": fallback}
+
+
+def set_version_status(con, level_id: int, version: int, status: str, reason: str = "") -> None:
+    """candidate -> live (ship) | candidate/live -> rolled_back | live -> retired."""
+    if status not in ("live", "rolled_back", "retired"):
+        raise ValueError(status)
+    if not con.execute("SELECT 1 FROM levels WHERE level_id=? AND version=?", [level_id, version]).fetchone():
+        raise ValueError(f"level {level_id} v{version} not found")
+    con.execute("UPDATE levels SET status=?, notes=concat(coalesce(notes,''), ?) WHERE level_id=? AND version=?",
+                [status, f" | {status}: {reason}" if reason else "", level_id, version])
+
+
+def next_level_id(con) -> int:
+    return con.execute("SELECT coalesce(max(level_id), 0) + 1 FROM levels").fetchone()[0]

@@ -21,6 +21,9 @@ Key engineering mechanism (per tool call, in this exact order)
    7 retry w/ full jitter ....... ONLY if tool.idempotent
    8 untrusted output ........... taint session -> L2 sanitize + spotlight
   Before every LLM call: BudgetGuard pre-check (worst-case cost) and step cap.
+  Workflow mode (AgentRunner.workflow): deterministic pipelines issue tool
+  calls directly through steps 1-8 - same guards, spans and audit trail,
+  zero LLM cost for steps that need no reasoning.
   After the loop: L3 output filter on the final answer.
   Every step is a span (agent.run > llm.call | tool.call) exported to DuckDB.
 
@@ -79,6 +82,7 @@ class ToolCallRecord:
     attempts: int = 0
     duration_ms: float = 0.0
     l2_findings: list[str] = field(default_factory=list)
+    raw: Any = None  # the tool's structured return value (workflow mode reads this, the model never does)
 
 
 @dataclass
@@ -256,6 +260,7 @@ class AgentRunner:
                 except CheckpointBlocked as e:
                     return self._block(rec, call, GuardDecision(False, "checkpoint", e.rule, e.detail), sp)
                 rec.ok = True
+                rec.raw = out
                 text = out if isinstance(out, str) else json.dumps(out, default=str)
                 trusted_msg = True
                 if spec.untrusted_output:
@@ -274,3 +279,65 @@ class AgentRunner:
                 return rec, Message("tool", f"ERROR: {type(e).__name__}: {str(e)[:300]}", tool_call_id=call.id, name=call.name)
             finally:
                 rec.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
+
+
+class ToolCallBlocked(RuntimeError):
+    def __init__(self, record: ToolCallRecord):
+        self.record = record
+        d = record.decision
+        super().__init__(f"{record.name} blocked by {d.layer}:{d.rule} - {d.detail}" if d else f"{record.name} failed")
+
+
+class WorkflowSession:
+    """Deterministic tool calls through the full guarded pipeline (no LLM).
+
+    with runner.workflow("ship_daily", mode=READ_WRITE, intent=[...]) as wf:
+        proof = wf.call("verify_level", grid="ABCD/...")      # -> tool's raw return value
+    """
+
+    def __init__(self, runner: "AgentRunner", name: str, mode: str, intent: list[ExpectedAction] | None,
+                 trusted_context: str):
+        self.runner, self.name, self.mode, self.intent = runner, name, mode, intent or []
+        self.run_id = uuid.uuid4().hex[:12]
+        self.session = SessionState(mode=mode, token=f"{'ro' if mode == READ_ONLY else 'rw'}_{self.run_id}")
+        self.session.trusted_corpus = _fold(runner.spec.system_prompt + "\n" + trusted_context)
+        self.sanitizer = UntrustedContentSanitizer(self.session.nonce)
+        self.ctx = ToolContext(self.run_id, runner.spec.name, runner.defenses, dict(runner.extras))
+        self.records: list[ToolCallRecord] = []
+        self._cm = None
+        self.root = None
+
+    def __enter__(self) -> "WorkflowSession":
+        self._cm = self.runner.tracer.span("workflow.run", kind="SERVER", new_trace=True, run_id=self.run_id,
+                                           agent=self.runner.spec.name, workflow=self.name, mode=self.mode,
+                                           defenses=self.runner.defenses.name)
+        self.root = self._cm.__enter__()
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        self.root.set(tool_calls=len(self.records),
+                      blocks=sum(1 for r in self.records if r.decision and not r.decision.allowed))
+        return self._cm.__exit__(*exc)
+
+    def call_record(self, tool: str, **args) -> ToolCallRecord:
+        call = ToolCall(f"wf_{len(self.records)}", tool, args)
+        rec, _ = self.runner._execute(call, self.ctx, self.session, self.sanitizer, self.intent)
+        self.records.append(rec)
+        return rec
+
+    def call(self, tool: str, **args) -> Any:
+        """Return the tool's raw output, or raise ToolCallBlocked (guard) / RuntimeError (tool error)."""
+        rec = self.call_record(tool, **args)
+        if rec.decision and not rec.decision.allowed:
+            raise ToolCallBlocked(rec)
+        if not rec.ok:
+            raise RuntimeError(f"{tool} failed")
+        return rec.raw
+
+
+def _workflow(self: "AgentRunner", name: str, *, mode: str = READ_WRITE, intent: list[ExpectedAction] | None = None,
+              trusted_context: str = "") -> WorkflowSession:
+    return WorkflowSession(self, name, mode, intent, trusted_context)
+
+
+AgentRunner.workflow = _workflow

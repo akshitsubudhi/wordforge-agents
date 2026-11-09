@@ -86,6 +86,7 @@ class ToolSpec:
     idempotent: bool = True
     untrusted_output: bool = False
     timeout_s: float = 5.0
+    requires_approval: bool = False  # human/policy gate on EVERY call, tainted or not (L3)
 
     def arg_kinds(self) -> dict[str, str]:
         out = {}

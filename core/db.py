@@ -11,6 +11,9 @@ Role & contracts
     players     - one row per player (event-level cohort + live players).
     cookie_cats - 90,189-row Cookie Cats A/B dataset (real CSV or calibrated).
     levels      - versioned level catalogue (level_id, version, status).
+    feature_flags / approvals / experiment_exposures / agent_audit
+                - Phase-2 experimentation state (flag cap enforced by a
+                  CHECK constraint as a last line of defence).
   Upstream : app/game_api.py (live writes), scripts/seed_telemetry.py (bulk).
   Downstream: Phase-2 LiveOps Copilot / Level Factory SQL, dashboards.
 
@@ -92,6 +95,46 @@ SCHEMA = [
         created_at       TIMESTAMP,
         notes            VARCHAR,
         PRIMARY KEY (level_id, version)
+    )""",
+    # additive migration (Phase 2): difficulty-model prediction stored with each version
+    "ALTER TABLE levels ADD COLUMN IF NOT EXISTS predicted_fail_rate DOUBLE",
+    """CREATE TABLE IF NOT EXISTS feature_flags (
+        flag              VARCHAR PRIMARY KEY,
+        level_id          INTEGER,
+        control_version   INTEGER,
+        treatment_version INTEGER,
+        rollout_pct       DOUBLE CHECK (rollout_pct >= 0 AND rollout_pct <= 20),  -- DB-level exposure cap
+        status            VARCHAR,   -- pending_approval | active | denied | rolled_back | shipped
+        created_at        TIMESTAMP,
+        updated_at        TIMESTAMP,
+        notes             VARCHAR
+    )""",
+    """CREATE TABLE IF NOT EXISTS approvals (
+        approval_id VARCHAR PRIMARY KEY,
+        ts          TIMESTAMP,
+        agent       VARCHAR,
+        tool        VARCHAR,
+        args        VARCHAR,
+        decision    VARCHAR,   -- approved | denied
+        decided_by  VARCHAR,
+        reason      VARCHAR
+    )""",
+    """CREATE TABLE IF NOT EXISTS experiment_exposures (
+        flag        VARCHAR,
+        user_id     VARCHAR,
+        variant     VARCHAR,   -- control | treatment
+        day         INTEGER,
+        exposed_at  TIMESTAMP,
+        pre_metric  DOUBLE,    -- CUPED covariate: level completions in the 7 days before exposure
+        outcome     DOUBLE,    -- primary: level completions in the 7 days after (NULL until observable)
+        retained_d1 BOOLEAN,   -- guardrail (NULL until observable)
+        source      VARCHAR    -- live | sim
+    )""",
+    """CREATE TABLE IF NOT EXISTS agent_audit (
+        ts     TIMESTAMP,
+        agent  VARCHAR,
+        action VARCHAR,
+        detail VARCHAR
     )""",
     """CREATE OR REPLACE VIEW active_levels AS
         SELECT * EXCLUDE (rn) FROM (

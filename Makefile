@@ -4,7 +4,7 @@ PY      ?= .venv/bin/python
 PORT    ?= 8000
 UV      := $(shell command -v uv 2>/dev/null)
 
-.PHONY: help setup seed reseed run stop conformance redteam metrics test check clean wordlist
+.PHONY: help setup seed reseed run stop conformance redteam metrics test check clean wordlist phase2 copilot-scan
 
 help:
 	@echo "make setup        create .venv and install deps (uv if present, else venv+pip)"
@@ -15,6 +15,8 @@ help:
 	@echo "make metrics      p50/p95/p99 latency, cost and success rate from data/traces.duckdb"
 	@echo "make test         pytest"
 	@echo "make check        test + conformance (the CI gate)"
+	@echo "make phase2       run Copilot + Level Factory end to end, print the scorecard (server must be stopped)"
+	@echo "make copilot-scan funnel anomaly scan only (read-only workflow)"
 
 setup:
 ifdef UV
@@ -49,6 +51,12 @@ metrics:
 
 test:
 	$(PY) -m pytest
+
+phase2:
+	$(PY) scripts/verify_phase2.py --out docs/phase2_scorecard.md
+
+copilot-scan:
+	$(PY) -m agents.liveops_copilot.agent scan
 
 check: test conformance
 

@@ -31,6 +31,8 @@ Key engineering mechanism
   L3  Privilege separation:
       * session mode: a READ_ONLY analysis token can never invoke write /
         egress / exec tools, whatever the arguments or approvals;
+      * approval gate: tools flagged requires_approval (feature-flag rollout,
+        experiment ship) ALWAYS go to the approver, tainted or not;
       * taint: the first untrusted byte flags the session;
       * side-effecting tools (write/egress/exec) on a tainted session need
         approval; the eval operator approves only actions matching the
@@ -413,7 +415,7 @@ class PrivilegeGate:
             fv = _fold(v).strip()
             if len(fv) >= self.min_copy_len and fv not in trusted and any(fv in u for u in session.untrusted_corpus):
                 return GuardDecision(False, "L3_privilege", "write_arg_from_untrusted", f"{v[:60]!r}")
-        if session.tainted:
+        if session.tainted or getattr(spec, "requires_approval", False):
             ok, why = self.approver(ApprovalRequest(spec.name, args, intent, session.taint_sources))
             if not ok:
                 return GuardDecision(False, "L3_privilege", "approval_denied", why)

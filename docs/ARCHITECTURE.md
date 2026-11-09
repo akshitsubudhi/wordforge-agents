@@ -38,7 +38,18 @@ liveops-agent-platform/
 ├── data/                         wordlist.tsv (committed) · telemetry.duckdb · traces.duckdb (generated)
 ├── docs/ARCHITECTURE.md          this file
 ├── tests/test_phase1.py
-└── agents/                       Phase 2+: liveops_copilot · level_factory · ad_economy · soma_intake
+├── agents/
+│   ├── common.py                 approval ledger (every decision → `approvals`), audit trail, simulated attempts
+│   ├── liveops_copilot/          ── Project 1 ──
+│   │   ├── stats_engine.py       power (proportions/means, unequal allocation, CUPED-adjusted), CUPED, mSPRT
+│   │   ├── simulator.py          experiment traffic bootstrapped from seeded players
+│   │   └── agent.py              scan → power → candidate → flag (≤20 %, approval) → CUPED+mSPRT → rollback/ship
+│   └── level_factory/            ── Project 2 ──
+│       ├── solver.py             Trie+DFS proof, independent referee re-check, branching factor, Zipf rarity
+│       ├── difficulty_model.py   Poisson-binomial player model, Nelder-Mead calibration on telemetry
+│       └── critic_and_eval.py    LLM/heuristic generator · 4-rubric critic · 100-level golden eval · daily shipper
+├── scripts/verify_phase2.py      runs both pipelines, prints the Markdown scorecard (docs/phase2_scorecard.md)
+└── tests/test_phase2.py
 ```
 
 ## System diagram
@@ -142,3 +153,84 @@ The L3_only score of 1/8 on category A is fixture A06: a `DELETE` sent through t
 query tool. L1 rejects it with the SQL parser. L3 independently neutralises it, because
 read-tool SQL always runs inside a transaction that rolls back. That is two separate
 mechanisms on the same boundary.
+
+
+## Phase 2: LiveOps Copilot and Level Factory
+
+Both agents run on the Phase 1 harness. Every step is a tool call through `AgentRunner.workflow()`,
+a deterministic, no-LLM mode added in Phase 2, so every step gets Pydantic validation, L1, L3, the
+circuit breaker, timeouts and spans. The LLM is used only where judgement is needed: grid
+proposals, an optional critic second opinion that can only lower scores, and the analyst summary.
+Every LLM path falls back to deterministic code.
+
+```mermaid
+flowchart LR
+    subgraph Copilot["Project 1: LiveOps Copilot"]
+        SC[scan_funnel<br/>robust z] --> BL[baseline_metrics<br/>sigma, rho from DuckDB]
+        BL --> PW[power_analysis<br/>CUPED-adjusted N]
+        PW --> PR[propose_easier_level]
+        PR --> FL{{configure_flag<br/>≤20% · requires_approval}}
+        FL --> EV[evaluate_experiment<br/>CUPED + mSPRT replay]
+        EV -->|guardrail CI < 0| RB[rollback_experiment<br/>automatic]
+        EV -->|significant lift ≥7 days| SH{{ship_experiment<br/>requires_approval}}
+    end
+    subgraph Factory["Project 2: Level Factory"]
+        GEN[generate_candidates<br/>LLM or heuristic] --> PRV[prove_level<br/>Trie DFS + referee re-check]
+        PRV --> DIF[predict_difficulty<br/>calibrated model]
+        DIF --> CRT[critique_level<br/>4 rubrics]
+        CRT --> PUB{{publish_level<br/>release gate}}
+        MON[live_level_health] -->|observed > predicted + 0.2| RET[retire_level]
+    end
+    PR -. uses .-> GEN
+    PUB --> LV[(levels)]
+    FL --> FF[(feature_flags<br/>CHECK ≤ 20)]
+    LV --> GAME[game_api → game.html]
+    FF --> GAME
+    GAME -->|exposures + events| TDB[(telemetry.duckdb)]
+    TDB --> SC
+    TDB --> EV
+    TDB --> MON
+    OP((human /<br/>operator)) -. approvals .-> FL
+    OP -. approvals .-> SH
+```
+
+### Phase 2 failure-mitigation matrix
+
+| Block | Key mechanism | Failure mode | Automatic mitigation (operator effort) |
+|---|---|---|---|
+| `stats_engine.py` | Fleiss sample size (unequal allocation); CUPED with pooled θ; mSPRT with a normal mixture, running-min p and intersected CIs | Peeking inflates false positives; degenerate data | mSPRT keeps FPR ≤ α under daily peeks (Ville's inequality); `ValueError` on n<2 or zero variance (none) |
+| `liveops_copilot/agent.py` | Workflow over 9 guarded tools; the playbook in the header | Over-exposure; unapproved launch; harmful variant; premature ship | Cap enforced 3 times (L1, the tool, DuckDB CHECK); `requires_approval` gate writes to `approvals`; automatic rollback once the guardrail CI is below 0; ship needs ≥ 7 days plus approval (approve) |
+| `liveops_copilot/simulator.py` | Bootstraps (pre, post, D1) triples from real seeded players | Simulated rows polluting analysis | `source='sim'`; `verify_phase2 --reset` deletes them (none) |
+| `level_factory/solver.py` | Trie-pruned DFS proof plus an independent referee re-check of every witness | Solver bug ships an unsolvable level; generator claims absent words | `ok=False` unless both implementations agree; missing targets reject the level (none) |
+| `level_factory/difficulty_model.py` | Exact Poisson-binomial over 15 skill nodes; Nelder-Mead calibration | Mis-predicted difficulty | Live monitor compares observed vs predicted per version and retires or rolls back (none) |
+| `level_factory/critic_and_eval.py` | 4 rubrics including an offensive-word trie; release-gate approver; golden κ | Critic drift; publish bypassing gates; bad level live | Golden eval on every verify; publish only with proof + critic in the ledger; `monitor_and_rollback()` (none) |
+| `app/game_api.py` (Phase 2 additions) | Stable sha256 bucket per (flag, user); exposure log with a pre-period covariate | Inconsistent assignment; lost exposures | Deterministic hashing; first exposure per user/flag logged in the same request (none) |
+
+### Measured results (`make phase2`, full report in [phase2_scorecard.md](phase2_scorecard.md))
+
+| Check | Result |
+|---|---|
+| Funnel scan | Level 7 flagged: fail rate 63%, median of other levels 23%, robust z 3.7 |
+| Power, 10% relative MDE at 20% exposure, 4,000 eligible users/day | 8,429 users without CUPED → 7,774 with CUPED (ρ = 0.28) |
+| Exposure cap | 50% blocked by L1; unplanned flag denied by the approval gate; raw SQL 50% rejected by the CHECK constraint |
+| Harmful variant (simulated D1 −6pp) | Rolled back automatically on day 2: D1 always-valid CI [−0.089, −0.005] |
+| Good variant (simulated +12%) | Shipped on day 7 after approval: CUPED lift +11.5%, always-valid p = 1.7e−6 |
+| Peeking, A/A test, 400 runs × 14 peeks | Naive FPR 21.3% vs mSPRT FPR 1.25% (α = 0.05) |
+| Difficulty model | Attempt-weighted MAE 0.234 → 0.064 after calibration |
+| Critic vs 100-level golden set | 96% agreement, κ 0.92, defect recall 1.00, defect precision 0.92 |
+| Daily ship | 170 generated → 162 in band → 80 critic-approved → 3 shipped, all release-gated |
+| Live spike (simulated 85% fail) | Daily level retired and removed from the game rotation |
+
+**Caveats, stated up front:**
+
+- **Seeded fail rates:** they were set per level in Phase 1, not derived from board features. The
+  calibration therefore shows fit to that data, not validity on real players. The model
+  under-predicts 5x5 boards; the shipped daily-hard level needs 22 of 38 words in 110 s. The live
+  monitor is the backstop for exactly this case.
+- **CUPED's modest gain (7% variance reduction):** this is real for this data. The Phase 1 seeder
+  front-loads play onto day 0, so week-1 activity only weakly predicts week-2 activity (ρ = 0.28).
+- **Golden labels:** they come from construction (clean levels plus injected defects), not from
+  people. Drop `data/golden_levels_human.csv` (`id,label`) into place to score the critic against
+  human labels instead.
+- **Simulated traffic:** experiment traffic is simulated (bootstrapped from seeded players). Live
+  exposures from the game use the same table and the same evaluator.

@@ -57,6 +57,7 @@ Failure modes & 1-step mitigation
   .lvl.current { outline: 2px solid var(--accent); }
   .lvl.locked { opacity: .4; cursor: not-allowed; }
   .lvl .hot { position: absolute; top: -6px; right: -6px; background: var(--bad); color: #fff; font-size: 9px; padding: 1px 5px; border-radius: 6px; }
+  .lvl .hot.new { background: var(--good); }
   .legend { margin-top: 12px; font-size: 12px; color: var(--muted); }
   .board-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; }
   .hud { width: 100%; max-width: 440px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
@@ -107,7 +108,7 @@ Failure modes & 1-step mitigation
   <section class="card">
     <h2>Levels</h2>
     <div class="levels" id="levels"></div>
-    <div class="legend">Badge = fleet fail rate &gt; 50% (seeded + live attempts).</div>
+    <div class="legend">Red = fail rate of the live version &gt; 50%. Green = built by the Level Factory (NEW = today's daily level).</div>
   </section>
 
   <section class="card board-wrap">
@@ -172,9 +173,11 @@ function renderLevels() {
   const box = $("levels"); box.innerHTML = "";
   for (const l of S.levels) {
     const b = document.createElement("button");
-    const locked = l.level_id > S.unlocked;
+    const locked = l.level_id > S.unlocked && !l.daily;  // factory daily levels are always playable
     b.className = "lvl" + (S.done.has(l.level_id) ? " done" : "") + (locked ? " locked" : "") + (S.attempt && S.attempt.level_id === l.level_id ? " current" : "");
-    b.innerHTML = `${l.level_id}<small>${l.n_rows}×${l.n_cols} · ${l.time_limit_s}s</small>` + (l.fail_rate > 0.5 ? `<span class="hot">${Math.round(l.fail_rate * 100)}%</span>` : "");
+    b.innerHTML = `${l.level_id}<small>${l.daily ? "daily · " : ""}${l.n_rows}×${l.n_cols} · ${l.time_limit_s}s</small>`
+      + (l.fail_rate > 0.5 ? `<span class="hot">${Math.round(l.fail_rate * 100)}%</span>`
+         : l.created_by === "level_factory" ? `<span class="hot new">${l.daily ? "NEW" : "v" + l.version}</span>` : "");
     b.disabled = locked;
     b.title = locked ? "Complete the previous level to unlock" : `target ${l.target_words} words · fail rate ${l.fail_rate ?? "n/a"}`;
     b.onclick = () => startLevel(l.level_id);
@@ -282,7 +285,7 @@ async function startLevel(id) {
     const r = await api("/api/game/level/start", { session_id: S.session, level_id: id });
     S.attempt = r; S.path = []; S.typed = "";
     tap(r.events);
-    $("lvlPill").textContent = `Level ${r.level_id} · v${r.level_version}`;
+    $("lvlPill").textContent = `Level ${r.level_id} · v${r.level_version}` + (r.experiment ? ` · ${r.variant}` : "");
     $("found").innerHTML = ""; $("hintText").textContent = ""; $("hintBtn").disabled = false; $("quitBtn").disabled = false;
     setProgress(0, r.target_words);
     renderGrid(); renderLevels(); paintSelection();

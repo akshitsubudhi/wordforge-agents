@@ -11,7 +11,7 @@ make run        # http://localhost:8000/game  (seeds an empty DB on first start,
 make check      # pytest + guardrail conformance suite (CI gate)
 ```
 
-## Phase 1 (this commit)
+## Phase 1
 
 | Component | Where | Proof |
 |---|---|---|
@@ -20,6 +20,17 @@ make check      # pytest + guardrail conformance suite (CI gate)
 | Versioned levels with solver-gated publish and one-step rollback | `core/levels.py` | `test_publish_and_rollback` |
 | SRE agent harness | `core/harness/` | retry, breaker, budget, timeout, sandbox and telemetry tests |
 | Three-layer guardrails with a 5-way ablation | `core/harness/redteam_guard.py`, `run_redteam_eval.py` | all_on blocks **25/25**, **0/10** false alarms |
+
+## Phase 2
+
+| Component | Where | Proof |
+|---|---|---|
+| LiveOps Experimentation Copilot: anomaly scan, power, ≤20% flag with human approval, CUPED + mSPRT, automatic rollback | `agents/liveops_copilot/` | `make phase2` scorecard; `tests/test_phase2.py` |
+| Autonomous Level Factory: generator, solver proof, difficulty model, 4-rubric critic, golden eval, daily ship, live retire | `agents/level_factory/` | critic κ 0.92 on the 100-level golden set; 3 daily levels shipped into the game |
+
+`make phase2` resets only Phase 2 state, runs both pipelines against `data/telemetry.duckdb`, and
+writes [docs/phase2_scorecard.md](docs/phase2_scorecard.md). Stop the server first, because DuckDB
+allows one writer per file.
 
 Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the diagram, the block-by-block
 failure-mitigation matrix and the measured results.
