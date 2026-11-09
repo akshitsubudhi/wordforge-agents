@@ -151,7 +151,7 @@ section { display: none; } section.show { display: block; }
   <div class="brand">LiveOps Agent Platform<small>Evaluator Control Center</small></div>
   <div class="sep">Start here</div>
   <button data-s="overview" class="active">◎ Overview</button>
-  <button data-s="faults">⚡ Fault drills <span class="tag">4</span></button>
+  <button data-s="faults">⚡ Fault drills <span class="tag">5</span></button>
   <div class="sep">Projects</div>
   <button data-s="game">▦ Live game</button>
   <button data-s="sre">⛨ SRE &amp; red-team <span class="tag">P4</span></button>
@@ -172,7 +172,7 @@ section { display: none; } section.show { display: block; }
       <h1>Production &amp; evaluation scorecard</h1>
       <p class="sub">Every number below is reproducible: <code>make scorecard</code>. Click a project on the left to run it live. Every action runs through the same guarded agent harness and leaves a trace you can open.</p>
     </div>
-    <div class="row"><button class="btn primary" id="runAllFaults">⚡ Inject all 4 production faults</button>
+    <div class="row"><button class="btn primary" id="runAllFaults">⚡ Inject all 5 production faults</button>
       <button class="btn" id="resetBtn" title="Removes factory levels, experiments, approvals and simulated events; seeded data and live play are kept">↺ Reset demo state</button></div>
   </div>
   <div class="tiles" id="tiles"><div class="tile muted">Loading scorecard…</div></div>
@@ -190,7 +190,7 @@ section { display: none; } section.show { display: block; }
 <section id="s-faults">
   <h1>Simulate production failure &amp; auto-mitigate</h1>
   <p class="sub">Each drill injects a real fault into the real component and streams what the guardrail did, with the trace id of the decision. Nothing is mocked except the fault itself.</p>
-  <div class="row" style="margin-bottom:14px"><button class="btn primary" id="runAllFaults2">Run all four</button><span class="muted small">≈5 seconds in total</span></div>
+  <div class="row" style="margin-bottom:14px"><button class="btn primary" id="runAllFaults2">Run all five</button><span class="muted small">≈5 seconds in total</span></div>
   <div class="grid g2" id="faultGrid"></div>
 </section>
 
@@ -455,9 +455,10 @@ async function loadOverview() {
 // ---------------- faults
 const FAULTS = [
   ["hallucinated_level", "LLM hallucinates an unsolvable level", "solver.py proof → critic → release gate → DB re-solve"],
-  ["network_dark", "Ad network goes dark mid-day", "EWMA dark rule → quarantine (circuit open) → half-open probe"],
+  ["network_dark", "Ad network goes dark during a floor trial", "EWMA dark rule → rollback to baseline floor → quarantine → half-open probe"],
   ["peeking", "Peeking false-positive experiment", "mSPRT always-valid p-value → copilot ship gate"],
   ["prompt_injection", "Indirect prompt injection in a support ticket", "L2 spotlight redaction → L1 PolicyGuard cap → L3 approval"],
+  ["runaway_cost", "Runaway token / cost loop", "BudgetGuard worst-case pre-call check → BudgetExceededError"],
 ];
 function buildFaults() {
   $("#faultGrid").innerHTML = FAULTS.map(([k, t, g], i) => `<div class="card fault-card" id="f-${k}"><div class="head"><div><div class="n">FAULT ${i + 1}</div><h2>${esc(t)}</h2></div>
@@ -473,10 +474,13 @@ function runFault(k, btn) {
       <div class="small" style="margin-top:6px">traces: ${r.trace_ids.map((t) => `<span class="trace" data-trace="${t}">${t.slice(0, 12)}…</span>`).join(" ")}</div>`;
     const ch = card.querySelector(".chart");
     if (k === "network_dark") lineChart(ch, { title: "eCPM per hour", x: r.series.guarded.map((_, i) => "h" + i), series: [{ name: "guarded", values: r.series.guarded }, { name: "unguarded", values: r.series.unguarded }],
-      markers: [{ i: r.dark_at, label: "admob dark" }], yfmt: (v) => "$" + (+v).toFixed(2) });
+      markers: [{ i: r.dark_at, label: "admob dark → rollback to $" + r.rolled_back_to + " floor" }], yfmt: (v) => "$" + (+v).toFixed(2) });
     if (k === "peeking") lineChart(ch, { title: "p-value at each daily peek (A/A test, true effect 0)", x: r.rows.map((x) => "d" + x.day),
       series: [{ name: "mSPRT always-valid", values: r.rows.map((x) => x.av_p) }, { name: "naive t-test", values: r.rows.map((x) => x.naive_p) }],
       ref: { y: 0.05, label: "α = 0.05" }, yfmt: (v) => (+v).toFixed(2), yMin: 0, yMax: 1 });
+    if (k === "runaway_cost") ch.innerHTML = tbl(["run", "status", "LLM calls", "pages fetched", "tokens", "spend", "cap"], Object.entries(r.runs).map(([name, x]) =>
+      [esc(name), `<span class="pill ${x.status === "budget_exceeded" && x.cap_usd ? "good" : "crit"}">${esc(x.status)}</span>`, x.llm_calls, x.tool_calls,
+       (+x.tokens).toLocaleString(), "$" + (+x.spent_usd).toFixed(6), x.cap_usd ? "$" + x.cap_usd : "none"]));
     if (k === "prompt_injection") ch.innerHTML = tbl(["defence config", "flag level7_hint after", "what fired", "trace"], r.runs.map((x) =>
       [esc(x.config), x.flag_after === null || x.flag_after === undefined ? '<span class="pill good">untouched</span>' : `<span class="pill crit">${x.flag_after}% of traffic</span>`,
        esc([...x.l2, ...x.blocks].join(", ") || "nothing"), `<span class="trace" data-trace="${x.trace_id}">${x.trace_id.slice(0, 10)}…</span>`]));

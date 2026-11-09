@@ -69,10 +69,10 @@ from agents.level_factory.difficulty_model import DifficultyModel, LevelFeatures
 from agents.level_factory.solver import LevelSolver, SolverProof
 from core.config import get_settings
 from core.db import TelemetryDB
-from core.harness.llm import LLMClient, Message, MockLLM
+from core.harness.llm import LLMClient, Message, MockLLM, get_llm, is_real_llm
 from core.harness.redteam_guard import READ_WRITE, AgentPolicy, ApprovalRequest, DefenseConfig
 from core.harness.resilience import BudgetExceeded, BudgetGuard
-from core.harness.runner import AgentRunner, AgentSpec
+from core.harness.runner import AgentRunner, AgentSpec, guarded_completion
 from core.harness.telemetry import Tracer, default_tracer
 from core.harness.tools import Privilege, StrictArgs, ToolContext, ToolRegistry, ToolSpec
 from core.levels import build_seed_levels, next_level_id, publish_version, set_version_status
@@ -117,25 +117,35 @@ class LevelGenerator:
               '{{"grids": ["ABCD/EFGH/IJKL/MNOP", ...]}} using "/" between rows.')
 
     def __init__(self, solver: LevelSolver, model: DifficultyModel, llm: LLMClient | None = None, seed: int = 0,
-                 llm_budget_usd: float = 0.05):
-        self.solver, self.model, self.llm = solver, model, llm
+                 llm_budget_usd: float = 0.05, tracer: Tracer | None = None):
+        self.solver, self.model, self.llm, self.tracer = solver, model, llm, tracer
         self.rng = random.Random(seed)
         self.budget = BudgetGuard(max_usd=llm_budget_usd, max_tokens=50_000, max_steps=1_000)
-        self.stats = {"llm_proposed": 0, "llm_valid": 0, "heuristic": 0}
+        self.stats = {"llm_proposed": 0, "llm_valid": 0, "heuristic": 0, "llm_calls": 0, "llm_errors": 0,
+                      "llm_budget_stops": 0, "last_llm_error": ""}
 
     @property
     def uses_llm(self) -> bool:
-        return self.llm is not None and not isinstance(self.llm, MockLLM)
+        return is_real_llm(self.llm)
 
     def _llm_grids(self, size: int, n: int) -> list[str]:
         prompt = self.PROMPT.format(n=n, size=size)
-        try:
-            self.budget.precheck_llm(self.llm.model, len(prompt) // 4 + 50, 600)
-            resp = self.llm.complete([Message("system", "You design word puzzles."), Message("user", prompt)], [], 600)
-            self.budget.charge_llm(resp.model, resp.usage)
+        try:  # through the harness: budget pre-check, breaker, retry, llm.call span
+            resp = guarded_completion(self.llm, [Message("system", "You design word puzzles."), Message("user", prompt)],
+                                      budget=self.budget, tracer=self.tracer, max_output_tokens=600,
+                                      purpose="level_generator")
+            self.stats["llm_calls"] += 1
             m = re.search(r"\{.*\}", resp.text, re.S)
             grids = json.loads(m.group())["grids"] if m else []
-        except (BudgetExceeded, Exception):  # provider/parse failure -> heuristic fills the quota
+            if not isinstance(grids, list):
+                grids = []
+        except BudgetExceeded as e:  # spend cap reached -> heuristic fills the quota
+            self.stats["llm_budget_stops"] += 1
+            self.stats["last_llm_error"] = str(e)[:160]
+            return []
+        except Exception as e:  # provider / parse failure -> heuristic fills the quota (recorded, never silent)
+            self.stats["llm_errors"] += 1
+            self.stats["last_llm_error"] = f"{type(e).__name__}: {str(e)[:140]}"
             return []
         self.stats["llm_proposed"] += len(grids)
         valid = []
@@ -207,8 +217,10 @@ def blocklist_trie() -> Trie:
 
 class CriticAgent:
     def __init__(self, solver: LevelSolver, model: DifficultyModel, existing_word_sets: Sequence[set[str]] = (),
-                 llm: LLMClient | None = None):
-        self.solver, self.model, self.llm = solver, model, llm
+                 llm: LLMClient | None = None, budget: BudgetGuard | None = None, tracer: Tracer | None = None):
+        self.solver, self.model, self.llm, self.tracer = solver, model, llm, tracer
+        self.budget = budget or BudgetGuard(max_usd=0.05, max_tokens=50_000, max_steps=1_000)
+        self.llm_stats = {"reviews": 0, "errors": 0, "budget_stops": 0, "last_error": ""}
         self.existing = [s for s in existing_word_sets if s]
         self.block_trie = blocklist_trie()
 
@@ -288,11 +300,12 @@ class CriticAgent:
             why = f"vowels {vowel_share:.0%}, max repeat {top}, rare letters {rare}, novelty J={jac:.2f}"
         scores.append(RubricScore(RUBRICS[3], sc, why))
 
-        llm_review = self._llm_review(c, proof) if self.llm is not None and not isinstance(self.llm, MockLLM) else None
-        if llm_review:  # risk-averse ensemble: an LLM can only LOWER a rubric score
+        llm_review = self._llm_review(c, proof) if is_real_llm(self.llm) else None
+        if llm_review:  # risk-averse ensemble: an LLM can only LOWER a rubric score (clamped to the 1-5 scale)
             for s in scores:
-                if isinstance(llm_review.get(s.rubric), int) and llm_review[s.rubric] < s.score:
-                    s.score, s.reason = llm_review[s.rubric], s.reason + f" | llm: {llm_review.get('reason', '')[:80]}"
+                v = llm_review.get(s.rubric)
+                if isinstance(v, int) and not isinstance(v, bool) and max(1, v) < s.score:
+                    s.score, s.reason = max(1, v), s.reason + f" | llm: {str(llm_review.get('reason', ''))[:80]}"
         return CriticReport(proof.grid, all(s.score >= 3 for s in scores), scores, round(pred, 4) if pred is not None else None,
                             llm_review)
 
@@ -300,11 +313,22 @@ class CriticAgent:
         prompt = (f"Grade this word-game level 1-5 on {list(RUBRICS)}. Grid {proof.grid}, target {c.target_words} of "
                   f"{proof.word_count} words in {c.time_limit_s}s, words: {proof.valid_words[:40]}. Reply ONLY JSON "
                   '{"solvability_fairness":n,"difficulty_fit":n,"lexical_quality":n,"board_quality":n,"reason":"..."}')
-        try:
-            resp = self.llm.complete([Message("user", prompt)], [], 300)
+        try:  # through the harness: budget pre-check, breaker, retry, llm.call span
+            resp = guarded_completion(self.llm, [Message("user", prompt)], budget=self.budget, tracer=self.tracer,
+                                      max_output_tokens=300, purpose="level_critic")
             m = re.search(r"\{.*\}", resp.text, re.S)
-            return json.loads(m.group()) if m else None
-        except Exception:
+            out = json.loads(m.group()) if m else None
+            if not isinstance(out, dict):
+                return None  # e.g. the breaker served the mock, which has no opinion
+            self.llm_stats["reviews"] += 1
+            return out
+        except BudgetExceeded as e:  # cap reached: the deterministic rubrics stand on their own
+            self.llm_stats["budget_stops"] += 1
+            self.llm_stats["last_error"] = str(e)[:160]
+            return None
+        except Exception as e:
+            self.llm_stats["errors"] += 1
+            self.llm_stats["last_error"] = f"{type(e).__name__}: {str(e)[:140]}"
             return None
 
 
@@ -435,6 +459,8 @@ def load_golden(path: Path = GOLDEN_PATH, human_csv: Path | None = None) -> list
 
 
 def cohens_kappa(y_true: Sequence[str], y_pred: Sequence[str]) -> float:
+    if len(y_true) != len(y_pred) or not y_true:
+        raise ValueError("cohens_kappa needs two equal-length, non-empty label sequences")
     n = len(y_true)
     labels = sorted(set(y_true) | set(y_pred))
     po = sum(a == b for a, b in zip(y_true, y_pred)) / n
@@ -532,15 +558,25 @@ class LevelFactory:
         else:
             self.calibration_points = []
         self.model = model
-        self.llm = llm
-        self.generator = LevelGenerator(self.solver, self.model, llm, seed=seed)
+        # No explicit client -> provider selection by environment: ANTHROPIC_API_KEY / OPENAI_API_KEY give a real
+        # model behind retries + a circuit breaker; no key (or LLM_PROVIDER=mock) gives the deterministic mock.
+        self.llm = llm = llm if llm is not None else get_llm()
+        self.tracer = tracer or default_tracer()
+        self.generator = LevelGenerator(self.solver, self.model, llm, seed=seed, tracer=self.tracer)
+        self.llm_budget = self._fresh_llm_budget()
+        self.generator.budget = self.llm_budget
+        self.critic_llm_stats = {"reviews": 0, "errors": 0, "budget_stops": 0, "last_error": ""}
         self.ledger: dict[str, dict] = {}  # grid -> gate results from THIS process
         self.approvals = ApprovalLedger(db, "level_factory", self._release_gate, "release_gate")
         self.runner = AgentRunner(
             AgentSpec("level_factory", self.SYSTEM, AgentPolicy(FACTORY_TOOLS, get_settings().data_dir)),
-            self._registry(), llm or MockLLM("compliant"), defenses=defenses, tracer=tracer or default_tracer(),
-            approver=self.approvals)
+            self._registry(), llm, defenses=defenses, tracer=self.tracer, approver=self.approvals)
         self.funnel = {"generated": 0, "solver_verified": 0, "in_difficulty_band": 0, "critic_approved": 0, "shipped": 0}
+
+    @staticmethod
+    def _fresh_llm_budget() -> BudgetGuard:
+        cfg = get_settings()  # HARNESS_MAX_RUN_USD / HARNESS_MAX_RUN_TOKENS cap the model spend of ONE pipeline run
+        return BudgetGuard(max_usd=cfg.max_run_usd, max_tokens=cfg.max_run_tokens, max_steps=10_000)
 
     # ------------------------------------------------------------------ gates
     def _release_gate(self, req: ApprovalRequest) -> tuple[bool, str]:
@@ -564,6 +600,8 @@ class LevelFactory:
 
     # ------------------------------------------------------------------ tools
     def _t_generate(self, a: GoalArgs, ctx: ToolContext) -> list[dict]:
+        if is_real_llm(self.llm):  # generation starts a pipeline run: generator + critic share one fresh spend cap
+            self.llm_budget = self.generator.budget = self._fresh_llm_budget()
         cands = self.generator.propose(a.goal, a.size, a.time_limit_s, a.n, a.slot)
         self.funnel["generated"] += len(cands)
         return [asdict(c) for c in cands]
@@ -580,10 +618,14 @@ class LevelFactory:
         return {"predicted_fail_rate": round(self.model.predict(f), 4), "features": f.describe()}
 
     def _t_critique(self, a: LevelArgs, ctx: ToolContext) -> dict:
-        critic = CriticAgent(self.solver, self.model, self._existing_word_sets(), self.llm)
+        critic = CriticAgent(self.solver, self.model, self._existing_word_sets(), self.llm, budget=self.llm_budget,
+                             tracer=self.tracer)
         c = Candidate(a.grid, a.time_limit_s, a.target_words, a.goal, required_words=a.required_words)
         proof = self.solver.prove(a.grid, a.required_words, a.target_words)
         rep = critic.review(c, proof)
+        for k in ("reviews", "errors", "budget_stops"):
+            self.critic_llm_stats[k] += critic.llm_stats[k]
+        self.critic_llm_stats["last_error"] = critic.llm_stats["last_error"] or self.critic_llm_stats["last_error"]
         self.ledger[proof.grid] = {"proof_ok": proof.ok, "proof_reason": proof.reason, "critic_approve": rep.approve,
                                    "scores": rep.score_map, "predicted": rep.predicted_fail_rate,
                                    "target_words": a.target_words, "time_limit_s": a.time_limit_s}
@@ -631,11 +673,13 @@ class LevelFactory:
 
     def _registry(self) -> ToolRegistry:
         R, W = Privilege.READ, Privilege.WRITE
+        slow = is_real_llm(self.llm)  # a real model round-trip (with retries) needs far more than the 5 s default
         return ToolRegistry([
-            ToolSpec("generate_candidates", "Propose candidate grids for a difficulty goal", GoalArgs, self._t_generate, R, timeout_s=60),
+            ToolSpec("generate_candidates", "Propose candidate grids for a difficulty goal", GoalArgs, self._t_generate, R,
+                     timeout_s=150 if slow else 60),
             ToolSpec("prove_level", "Solver proof of solvability", LevelArgs, self._t_prove, R),
             ToolSpec("predict_difficulty", "Predict per-attempt fail rate", LevelArgs, self._t_predict, R),
-            ToolSpec("critique_level", "4-rubric critic", LevelArgs, self._t_critique, R),
+            ToolSpec("critique_level", "4-rubric critic", LevelArgs, self._t_critique, R, timeout_s=90 if slow else 5),
             ToolSpec("publish_level", "Publish a level version (release-gated)", PublishArgs, self._t_publish, W,
                      idempotent=False, requires_approval=True),
             ToolSpec("live_level_health", "Observed vs predicted fail rate of shipped levels", HealthArgs, self._t_health, R),

@@ -255,7 +255,7 @@ flowchart LR
         SIM --> WF[waterfall<br/>naive / strategic]
         TS[NIG Thompson sampling<br/>reserve floor] --> CFG[(ad_mediation_config<br/>versioned · LKG)]
         OBS[observe_hour] --> DET[EWMA detectors<br/>total + per network]
-        DET -->|one network dark| Q[quarantine + half-open probe]
+        DET -->|one network dark| Q[roll a trial floor back to baseline, quarantine + half-open probe]
         DET -->|total drop after a recent change| RB[guarded rollback to LKG]
         DET -->|total drop, no recent change| ESC[escalate to human]
         LTV[(telemetry.duckdb<br/>measured D1 LTV)] --> UA[LinTS UA allocator]
@@ -282,7 +282,7 @@ flowchart LR
 |---|---|---|---|
 | `ad_economy/auction_sim.py` | Numeric BNE shading on a grid (validated against the closed form and revenue equivalence); pooled opponent CDF for heterogeneous networks | Dark network hangs every auction to timeout | Modelled explicitly, so the controller's quarantine has a measurable payoff (none) |
 | `ad_economy/bandit_agent.py`: floors | NIG Thompson sampling over revenue per request | Exploring bad floors costs revenue | Regret is 8% of uniform exploration; floor step guard ±$12 (none) |
-| `ad_economy/bandit_agent.py`: ops | Confirmed EWMA alarms; frozen baseline; re-baseline after every config change | Bad config push; dead network; market-wide drop; false quarantine after our own change | Rollback to last-known-good only after a recent change, with a cooldown; quarantine only a single-network zero-fill or share drop while the total is healthy; otherwise escalate (none) |
+| `ad_economy/bandit_agent.py`: ops | Confirmed EWMA alarms; frozen baseline; re-baseline after every config change | Bad config push; dead network; market-wide drop; false quarantine after our own change | Rollback to last-known-good only after a recent change, with a cooldown; a zero-fill outage during a floor trial rolls back to the baseline floor first (no cooldown), then quarantines; quarantine only a single-network zero-fill or share drop while the total is healthy; otherwise escalate (none) |
 | `ad_economy/bandit_agent.py`: UA | LinTS with daily posterior refresh | Over-concentration; oversized commitments | ≤ 50% of the day per channel; L1 currency cap of $5k per `allocate_ua_budget` call (none) |
 | `soma_intake/workflow.py` | Event history; activity started/completed; idempotency keys; pure `decide()` | Process crash; webhook redelivery; forged SMS | `recover()` re-runs a half-done activity with the same id, and downstream de-duplicates it; message-id de-dup; HMAC check returns 403 (none) |
 | `soma_intake/extractor.py` | Rule × channel × ASR × hedge confidence; noisy-OR; correction cues | Vague, conflicting or unseen phrasing | Below 0.80 → follow-up (max 3) → human handoff with reasons and citations (reviewer) |
@@ -335,7 +335,7 @@ From `make phase3`. Full reports: [ad economy](phase3_ad_economy_scorecard.md),
 - **Human approval.** The copilot's `configure_flag` and `ship_experiment` calls go through a real
   approval broker. The job blocks until the evaluator clicks Approve or Deny, and is denied
   automatically after 120 s (fail-closed).
-- **Fault drills.** The four drills live in `app/fault_drills.py` and are shared by the UI,
+- **Fault drills.** The five drills live in `app/fault_drills.py` and are shared by the UI,
   `make faults` and the tests.
 - **Scorecard.** `scripts/build_scorecard.py` merges every evaluation's JSON into
   `docs/scorecard.json`, the single source for the README table and the Overview tiles.

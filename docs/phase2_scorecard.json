@@ -37,8 +37,8 @@
     "calibration_points": [
       {
         "level_id": 1,
-        "attempts": 4446,
-        "fail_rate": 0.04993252361673414,
+        "attempts": 4445,
+        "fail_rate": 0.049943757030371204,
         "predicted": 0.07,
         "target": 6,
         "time_limit_s": 120,
@@ -91,9 +91,9 @@
       },
       {
         "level_id": 7,
-        "attempts": 6442,
-        "fail_rate": 0.6271344303011487,
-        "predicted": 0.5838,
+        "attempts": 6441,
+        "fail_rate": 0.6270765409097966,
+        "predicted": 0.5837,
         "target": 7,
         "time_limit_s": 75,
         "words": 11

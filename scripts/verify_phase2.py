@@ -352,8 +352,16 @@ def main() -> int:
     md2, p2 = project2(db, factory, a.date)
     md3 = game_check(db, factory, p2["shipped"])
     md4 = harness_summary(mem)
-    head = ["# Phase 2 Scorecard", "", f"_Generated {a.date}, {time.perf_counter() - t0:.1f}s, LLM: deterministic mock "
-            "(set ANTHROPIC_API_KEY or OPENAI_API_KEY for a real provider)._", "",
+    from core.harness.llm import is_real_llm
+
+    gs = factory.generator.stats
+    llm_note = (f"LLM: {factory.llm.model} via the harness ({gs['llm_calls']} generator calls, "
+                f"{factory.critic_llm_stats['reviews']} critic reviews, {gs['llm_errors'] + factory.critic_llm_stats['errors']} "
+                f"errors, {gs['llm_budget_stops'] + factory.critic_llm_stats['budget_stops']} budget stops) - numbers are NOT "
+                "the published deterministic ones; use LLM_PROVIDER=mock to reproduce those"
+                if is_real_llm(factory.llm) else
+                "LLM: deterministic mock (set ANTHROPIC_API_KEY or OPENAI_API_KEY and LLM_PROVIDER=auto for a real provider)")
+    head = ["# Phase 2 Scorecard", "", f"_Generated {a.date}, {time.perf_counter() - t0:.1f}s, {llm_note}._", "",
             table(["check", "result", "detail"], [[n, "PASS" if ok else "**FAIL**", d] for n, ok, d in CHECKS]), ""]
     report = "\n".join(head + md1 + md2 + md3 + md4)
     print(report)

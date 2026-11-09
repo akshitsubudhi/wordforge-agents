@@ -669,33 +669,40 @@ def resolve(cands: list[Candidate]) -> CaseExtraction:
     return CaseExtraction(fields)
 
 
-def extract(messages: list[InboundMessage], llm=None) -> CaseExtraction:
+def extract(messages: list[InboundMessage], llm=None, budget=None, tracer=None) -> CaseExtraction:
     cands = candidates(messages)
     if llm is not None:
-        cands += llm_candidates(messages, llm)
+        cands += llm_candidates(messages, llm, budget, tracer)
     return resolve(cands)
 
 
-def llm_candidates(messages: list[InboundMessage], llm) -> list[Candidate]:
-    """Optional LLM pass. A proposal survives only if its quote is verbatim in a source message."""
+def llm_candidates(messages: list[InboundMessage], llm, budget=None, tracer=None) -> list[Candidate]:
+    """Optional LLM pass, called through the harness (budget pre-check, breaker, retry, llm.call span).
+    A proposal survives only if its quote is verbatim in a source message."""
     import json as _json
 
-    from core.harness.llm import Message, MockLLM
+    from core.harness.llm import Message, is_real_llm
+    from core.harness.resilience import BudgetGuard
+    from core.harness.runner import guarded_completion
 
-    if llm is None or isinstance(llm, MockLLM):
+    if not is_real_llm(llm):
         return []
+    budget = budget or BudgetGuard(max_usd=0.05, max_tokens=50_000, max_steps=100)
     corpus = "\n\n".join(f"[{m.message_id} {m.channel}] {m.text}" for m in messages)
     prompt = ("Extract ACORD 125/126 fields from these customer messages. Reply ONLY with JSON "
               '{"field_key": {"value": ..., "quote": "<exact text copied from a message>"}} using keys '
               f"{[f.key for f in FIELDS]}.\n\n{corpus[:12000]}")
     try:
-        resp = llm.complete([Message("user", prompt)], [], 1200)
+        resp = guarded_completion(llm, [Message("user", prompt)], budget=budget, tracer=tracer, max_output_tokens=1200,
+                                  purpose="soma_extractor")
         data = _json.loads(re.search(r"\{.*\}", resp.text, re.S).group())
-    except Exception:
+    except Exception:  # BudgetExceeded, provider or parse failure: the deterministic extractor stands alone
+        return []
+    if not isinstance(data, dict):
         return []
     out = []
     for key, item in data.items():
-        if key not in SPEC or not isinstance(item, dict) or not item.get("quote"):
+        if key not in SPEC or not isinstance(item, dict) or not isinstance(item.get("quote"), str) or not item["quote"]:
             continue
         for m in messages:
             i = m.text.find(item["quote"])

@@ -40,6 +40,8 @@ class Settings:
     openai_api_key: str | None = field(default_factory=lambda: os.environ.get("OPENAI_API_KEY") or None)
     anthropic_api_key: str | None = field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY") or None)
     llm_model: str | None = field(default_factory=lambda: os.environ.get("LLM_MODEL") or None)
+    # "mock" forces the deterministic mock even when an API key is present (offline evals / CI / scorecards)
+    llm_provider: str = field(default_factory=lambda: (os.environ.get("LLM_PROVIDER") or "auto").strip().lower())
     max_run_usd: float = field(default_factory=lambda: _float("HARNESS_MAX_RUN_USD", 0.25))
     max_run_tokens: int = field(default_factory=lambda: int(_float("HARNESS_MAX_RUN_TOKENS", 200_000)))
 

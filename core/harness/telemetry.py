@@ -147,6 +147,40 @@ class InMemoryExporter:
         self.spans.append(span)
 
 
+# One short-lived connection to a spans DB at a time PER PROCESS. DuckDB refuses a second attach of the same
+# file inside one process ("Unique file handle conflict") when a flush and a dashboard read overlap, and
+# another PROCESS holding the file lock raises IOException: both are retried here with backoff.
+_TRACES_IO = threading.RLock()
+
+
+class TracesBusyError(RuntimeError):
+    """The spans DB stayed locked by another process for the whole retry window."""
+
+
+@contextmanager
+def traces_connection(db_path: Path | str, *, attempts: int = 6, base_s: float = 0.05, ensure_schema: bool = True):
+    last: Exception | None = None
+    with _TRACES_IO:
+        con = None
+        for k in range(max(1, attempts)):
+            try:
+                con = duckdb.connect(str(db_path))
+                break
+            except duckdb.Error as e:  # IOException (other process) / ResourceInUse / ConnectionException
+                last = e
+                if k < attempts - 1:
+                    time.sleep(base_s * 2 ** k)
+        if con is None:
+            raise TracesBusyError(f"{db_path} is busy ({type(last).__name__}: {str(last)[:140]}); "
+                                  "another process is writing spans - retry in a moment") from last
+        try:
+            if ensure_schema:
+                con.execute(SPANS_DDL)
+            yield con
+        finally:
+            con.close()
+
+
 class DuckDBSpanExporter:
     def __init__(self, db_path: Path | str, *, max_buffer: int = 10_000, batch_size: int = 256,
                  flush_interval_s: float = 1.0, background: bool = True):
@@ -214,16 +248,12 @@ class DuckDBSpanExporter:
                 return written
             try:
                 self.db_path.parent.mkdir(parents=True, exist_ok=True)
-                con = duckdb.connect(str(self.db_path))
-                try:
+                with traces_connection(self.db_path, attempts=2, ensure_schema=not self._schema_ready) as con:
                     if not self._schema_ready:
-                        con.execute(SPANS_DDL)
                         self._ingest_spool(con)
                         self._schema_ready = True
                     con.executemany(f"INSERT INTO spans ({','.join(SPAN_COLS)}) VALUES ({','.join('?' * len(SPAN_COLS))})",
                                     [s.to_row() for s in batch])
-                finally:
-                    con.close()
                 written += len(batch)
                 self.stats["exported"] += len(batch)
                 self._consecutive_failures = 0
@@ -314,11 +344,7 @@ def agent_metrics(db_path: Path | str, since_minutes: float | None = None) -> li
                      round(coalesce(sum(cost_usd), 0), 6) AS cost_usd,
                      coalesce(sum(input_tokens + output_tokens), 0) AS tokens
               FROM spans {where} GROUP BY ALL ORDER BY name, tool"""
-    con = duckdb.connect(str(db_path))
-    try:
-        con.execute(SPANS_DDL)
+    with traces_connection(db_path) as con:
         cur = con.execute(sql)
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, r)) for r in cur.fetchall()]
-    finally:
-        con.close()

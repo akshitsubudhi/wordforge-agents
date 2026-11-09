@@ -29,7 +29,9 @@ Key engineering mechanism
 
 Failure modes & 1-step mitigation
   * Degenerate inputs (n < 2, zero variance) -> ValueError with the cause,
-    never a silent NaN decision.
+    never a silent NaN decision. Callers that must keep running (the daily
+    monitor) fall back explicitly: unadjusted() when the covariate is
+    constant, and "no decision" when an outcome has no variance yet.
   * Mis-chosen tau -> only costs power, never validity; default tau = MDE
     (the effect size the test is designed to detect).
   * Plug-in variance estimate early in the test -> min_samples floor before
@@ -151,7 +153,8 @@ class CupedResult:
     relative_lift_cuped: float
 
     def to_dict(self) -> dict:
-        return dict(self.__dict__)
+        # non-finite floats (relative lift when the control mean is 0) become None: strict JSON for the API
+        return {k: (None if isinstance(v, float) and not math.isfinite(v) else v) for k, v in self.__dict__.items()}
 
 
 def _welch(yt: Sequence[float], yc: Sequence[float]) -> tuple[float, float]:
@@ -186,6 +189,20 @@ def cuped(y_t: Sequence[float], x_t: Sequence[float], y_c: Sequence[float], x_c:
         (eff_raw - zc * se_r, eff_raw + zc * se_r), (eff_adj - zc * se_a, eff_adj + zc * se_a),
         mc, eff_adj / mc if mc else float("nan"),
     )
+
+
+def unadjusted(y_t: Sequence[float], y_c: Sequence[float], alpha: float = 0.05) -> CupedResult:
+    """Plain Welch estimate in the CupedResult shape (theta = 0): the documented fallback when CUPED is undefined
+    because the covariate has zero variance (e.g. an experiment on brand-new players with no pre-period)."""
+    if min(len(y_t), len(y_c)) < 2:
+        raise ValueError("need >= 2 units per arm")
+    eff, v = _welch(y_t, y_c)
+    se = math.sqrt(v)
+    zc = _z(1 - alpha / 2)
+    p = _two_sided_p(eff / se) if se > 0 else 1.0
+    mc = fmean(y_c)
+    return CupedResult(len(y_t), len(y_c), 0.0, 0.0, eff, eff, v, v, 0.0, se, se, p, p, (eff - zc * se, eff + zc * se),
+                       (eff - zc * se, eff + zc * se), mc, eff / mc if mc else float("nan"))
 
 
 # ============================================================================ mSPRT

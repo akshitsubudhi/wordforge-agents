@@ -14,7 +14,7 @@ Role & contracts
     Level Factory  "Generate, Verify & Push Level to Live Game"
     Ad Economy   mechanism comparison, Thompson floors, UA bandit
     Soma Intake  one synthetic customer, end to end, day by day
-    Fault drills four injected production failures + the guardrail that
+    Fault drills five injected production failures + the guardrail that
                  catches each (app/fault_drills.py)
   Everything runs IN the server process on the server's own DuckDB writer, so
   there is no lock fight with the game.
@@ -55,7 +55,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from core.config import REPO_ROOT, get_settings
-from core.harness.telemetry import SPANS_DDL, agent_metrics, default_tracer
+from core.harness.telemetry import TracesBusyError, agent_metrics, default_tracer, traces_connection
 
 router = APIRouter(tags=["control-center"])
 STATIC = Path(__file__).parent / "static"
@@ -182,10 +182,12 @@ def register_handlers(app) -> None:
                 return fd.drill_network_dark(db, default_tracer(), log)
             if kind == "peeking":
                 return fd.drill_peeking(default_tracer(), log)
+            if kind == "runaway_cost":
+                return fd.drill_runaway_cost(default_tracer(), log)
             return fd.drill_prompt_injection(default_tracer(), log)
         return run
 
-    for k in ("hallucinated_level", "network_dark", "peeking", "prompt_injection"):
+    for k in ("hallucinated_level", "network_dark", "peeking", "prompt_injection", "runaway_cost"):
         H[f"fault_{k}"] = fault(k)
 
     def conformance(job, log):
@@ -468,14 +470,13 @@ def _traces_query(sql: str, params: list | None = None) -> list[dict]:
         default_tracer().exporter.flush(force=True)
     except Exception:
         pass
-    con = duckdb.connect(str(get_settings().traces_db))
     try:
-        con.execute(SPANS_DDL)
-        cur = con.execute(sql, params or [])
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, r)) for r in cur.fetchall()]
-    finally:
-        con.close()
+        with traces_connection(get_settings().traces_db) as con:
+            cur = con.execute(sql, params or [])
+            cols = [d[0] for d in cur.description]
+            return [dict(zip(cols, r)) for r in cur.fetchall()]
+    except TracesBusyError as e:  # another PROCESS holds the spans DB: tell the client to retry, never a 500
+        raise HTTPException(503, str(e), headers={"Retry-After": "1"})
 
 
 @router.get("/api/cc/overview")

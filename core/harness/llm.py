@@ -34,6 +34,7 @@ Failure modes & 1-step mitigation
 from __future__ import annotations
 
 import json
+import logging
 import math
 import uuid
 from collections import Counter
@@ -41,6 +42,8 @@ from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
 from core.harness import textnorm as tn
+
+log = logging.getLogger("liveops.llm")
 
 Role = Literal["system", "user", "assistant", "tool"]
 
@@ -177,18 +180,24 @@ class MockLLM:
 
 
 # ============================================================================ real providers
-def _http_post(url: str, headers: dict, payload: dict, timeout_s: float = 60.0) -> dict:
+def _http_post(url: str, headers: dict, payload: dict, timeout_s: float = 20.0) -> dict:
     import httpx
 
     try:
         r = httpx.post(url, headers=headers, json=payload, timeout=timeout_s)
     except (httpx.TimeoutException, httpx.TransportError) as e:
         raise TransientLLMError(f"network: {e}") from e
+    if r.status_code == 429 and any(k in r.text for k in ("insufficient_quota", "billing", "credit balance")):
+        # out of credits is not a rate limit: retrying cannot help and silently serving the mock would hide it
+        raise PermanentLLMError(f"HTTP 429 (quota/billing, not retryable): {r.text[:300]}")
     if r.status_code == 429 or r.status_code >= 500:
         raise TransientLLMError(f"HTTP {r.status_code}: {r.text[:200]}")
     if r.status_code >= 400:
         raise PermanentLLMError(f"HTTP {r.status_code}: {r.text[:300]}")
-    return r.json()
+    try:
+        return r.json()
+    except ValueError as e:  # 200 with a truncated / non-JSON body (proxy, gateway): retryable
+        raise TransientLLMError(f"non-JSON response: {r.text[:120]}") from e
 
 
 class OpenAIClient:
@@ -206,7 +215,8 @@ class OpenAIClient:
                     for tc in m.tool_calls]})
             else:
                 msgs.append({"role": m.role, "content": m.content})
-        payload = {"model": self.model, "messages": msgs, "max_tokens": max_output_tokens}
+        # max_completion_tokens is accepted by every current chat model; max_tokens is rejected by newer ones
+        payload = {"model": self.model, "messages": msgs, "max_completion_tokens": max_output_tokens}
         if tools:
             payload["tools"] = [{"type": "function", "function": t} for t in tools]
         data = _http_post(f"{self.base_url}/chat/completions", {"Authorization": f"Bearer {self.api_key}"}, payload)
@@ -256,35 +266,64 @@ class AnthropicClient:
 
 
 class FallbackLLM:
-    """Primary provider guarded by a circuit breaker; degrades to the mock."""
+    """Primary provider with jittered retries behind a circuit breaker; degrades to the mock.
 
-    def __init__(self, primary: LLMClient, fallback: LLMClient, breaker=None):
-        from core.harness.resilience import CircuitBreaker
+    Order per call: breaker check -> primary (up to `retry.max_attempts` tries on TransientLLMError, full
+    jitter) -> on exhaustion or an OPEN breaker the deterministic fallback answers. PermanentLLMError (bad
+    key, malformed request) is NOT masked: it propagates so a misconfiguration is loud, and the runner turns
+    it into status="error" instead of a crash. `served` counts who answered (provable in tests)."""
+
+    def __init__(self, primary: LLMClient, fallback: LLMClient, breaker=None, retry=None, sleep=None, rng=None):
+        import random
+        import time
+
+        from core.harness.resilience import CircuitBreaker, RetryPolicy
 
         self.primary, self.fallback = primary, fallback
         self.breaker = breaker or CircuitBreaker(f"llm:{primary.model}", failure_threshold=3, recovery_s=60)
+        self.retry = retry or RetryPolicy(max_attempts=3, base_s=0.25, cap_s=4.0)
+        self.sleep, self.rng = sleep or time.sleep, rng or random.Random()
         self.model = primary.model
         self.last_served_by = primary.model
+        self.served: Counter = Counter()
+        self.last_error = ""
 
     def complete(self, messages, tools, max_output_tokens: int = 1024) -> LLMResponse:
-        from core.harness.resilience import CircuitOpenError
+        from core.harness.resilience import CircuitOpenError, retry_call
+
+        def once():
+            with self.breaker.guard():
+                return self.primary.complete(messages, tools, max_output_tokens)
 
         try:
-            with self.breaker.guard():
-                resp = self.primary.complete(messages, tools, max_output_tokens)
+            resp, _ = retry_call(once, self.retry, retry_on=(TransientLLMError,), rng=self.rng, sleep=self.sleep)
             self.last_served_by = self.primary.model
-            return resp
-        except (CircuitOpenError, TransientLLMError):
+        except (CircuitOpenError, TransientLLMError) as e:
+            self.last_error = f"{type(e).__name__}: {str(e)[:200]}"
+            # a real failure is a warning; the (many) calls rejected while the breaker is open are debug noise
+            log.log(logging.WARNING if isinstance(e, TransientLLMError) else logging.DEBUG,
+                    "LLM %s unavailable (%s); serving %s", self.primary.model, self.last_error, self.fallback.model)
+            resp = self.fallback.complete(messages, tools, max_output_tokens)
             self.last_served_by = self.fallback.model
-            return self.fallback.complete(messages, tools, max_output_tokens)
+        self.served[self.last_served_by] += 1
+        return resp
+
+
+def is_real_llm(llm) -> bool:
+    """True when `llm` talks to a real provider (possibly behind FallbackLLM), False for the mock / None."""
+    return llm is not None and not isinstance(llm, MockLLM)
 
 
 def get_llm(prefer: Literal["auto", "mock", "naive"] = "auto") -> LLMClient:
+    """auto: ANTHROPIC_API_KEY -> Anthropic, else OPENAI_API_KEY -> OpenAI, else the deterministic mock.
+    Set LLM_PROVIDER=mock to force the mock even when a key is present (offline evals, CI)."""
     from core.config import get_settings
 
     if prefer == "naive":
         return MockLLM("naive")
     s = get_settings()
+    if s.llm_provider == "mock":
+        return MockLLM("compliant")
     if prefer == "auto" and s.anthropic_api_key:
         return FallbackLLM(AnthropicClient(s.anthropic_api_key, s.llm_model or "claude-sonnet-5-5"), MockLLM("compliant"))
     if prefer == "auto" and s.openai_api_key:

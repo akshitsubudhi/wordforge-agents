@@ -1,6 +1,6 @@
 # Phase 2 Scorecard
 
-_Generated 2026-11-09, 34.5s, LLM: deterministic mock (set ANTHROPIC_API_KEY or OPENAI_API_KEY for a real provider)._
+_Generated 2026-11-09, 39.7s, LLM: deterministic mock (set ANTHROPIC_API_KEY or OPENAI_API_KEY and LLM_PROVIDER=auto for a real provider)._
 
 | check | result | detail |
 |---|---|---|
@@ -29,13 +29,13 @@ _Generated 2026-11-09, 34.5s, LLM: deterministic mock (set ANTHROPIC_API_KEY or 
 
 | level | version | attempts | fail rate | robust z | anomaly |
 |---|---|---|---|---|---|
-| 1 | 1 | 4446 | 0.0499 | -1.81 |  |
+| 1 | 1 | 4445 | 0.0499 | -1.81 |  |
 | 2 | 1 | 4532 | 0.0759 | -1.57 |  |
 | 3 | 1 | 4552 | 0.118 | -1.2 |  |
 | 4 | 1 | 4429 | 0.1567 | -0.85 |  |
 | 5 | 1 | 4406 | 0.1773 | -0.53 |  |
 | 6 | 1 | 4392 | 0.2293 | -0.16 |  |
-| 7 | 1 | 6442 | 0.6271 | 3.7 | **YES** |
+| 7 | 1 | 6441 | 0.6271 | 3.7 | **YES** |
 | 8 | 1 | 3976 | 0.251 | 0.15 |  |
 | 9 | 1 | 3985 | 0.274 | 0.31 |  |
 | 10 | 1 | 3921 | 0.2948 | 0.46 |  |
@@ -82,7 +82,7 @@ Candidate level 7 v2 (`HGYS/DEDN/LRAE/YTNO`, target 4/43). Simulated truth: D1 -
 
 ### 5. Scenario A - easier level 7 (goal fail 0.35) -> CUPED + mSPRT -> approved ship
 
-Candidate level 7 v3 (`LDMR/RNOH/EICD/HAIN`, target 7/15, predicted fail 0.3522). Simulated truth: primary +12%, D1 +1pp.
+Candidate level 7 v3 (`LDMR/RNOH/EICD/HAIN`, target 7/15, predicted fail 0.3521). Simulated truth: primary +12%, D1 +1pp.
 
 | day | n treat | n ctrl | CUPED delta | always-valid 95% CI | likelihood ratio | always-valid p | D1 delta |
 |---|---|---|---|---|---|---|---|
@@ -115,7 +115,7 @@ theta = 0.14554, rho = 0.264406, **variance reduction 7.06%**, relative lift +11
 | fixed-horizon z-test, stop at first p<0.05 (peeking) | 0.2125 | 0.05 |
 | mSPRT always-valid, stop at first p<=0.05 | 0.0125 | 0.05 |
 
-_0.5s_
+_0.7s_
 
 ### 7. Approval ledger (`approvals` table)
 
@@ -132,20 +132,20 @@ _0.5s_
 
 | level | version | attempts | observed | predicted | abs error |
 |---|---|---|---|---|---|
-| 1 | 1 | 4446 | 0.0499 | 0.07 | 0.0201 |
+| 1 | 1 | 4445 | 0.0499 | 0.07 | 0.0201 |
 | 2 | 1 | 4532 | 0.0759 | 0.1068 | 0.0309 |
 | 3 | 1 | 4552 | 0.118 | 0.1459 | 0.0279 |
 | 4 | 1 | 4429 | 0.1567 | 0.2013 | 0.0446 |
 | 5 | 1 | 4406 | 0.1773 | 0.2263 | 0.049 |
 | 6 | 1 | 4392 | 0.2293 | 0.2599 | 0.0306 |
-| 7 | 1 | 6442 | 0.6271 | 0.5838 | 0.0433 |
+| 7 | 1 | 6441 | 0.6271 | 0.5837 | 0.0434 |
 | 8 | 1 | 3976 | 0.251 | 0.1445 | 0.1065 |
 | 9 | 1 | 3985 | 0.274 | 0.1672 | 0.1068 |
 | 10 | 1 | 3921 | 0.2948 | 0.2057 | 0.0891 |
 | 11 | 1 | 3874 | 0.326 | 0.2123 | 0.1137 |
 | 12 | 1 | 3905 | 0.3457 | 0.2275 | 0.1182 |
 
-Attempt-weighted MAE 0.2344 (priors) -> **0.0636** (calibrated). Params: `{"b0": -4.4641, "b_zipf": 0.7916, "b_len": 0.0204, "b_bf": 1.5149, "sigma": 1.7161}`. Caveat: the seeded fail rates were set per level in Phase 1, not produced by board features, so this measures fit to that data, not real-player validity.
+Attempt-weighted MAE 0.2344 (priors) -> **0.0636** (calibrated). Params: `{"b0": -4.4635, "b_zipf": 0.7917, "b_len": 0.02, "b_bf": 1.5151, "sigma": 1.7167}`. Caveat: the seeded fail rates were set per level in Phase 1, not produced by board features, so this measures fit to that data, not real-player validity.
 
 ### 2. Critic vs 100-level golden dataset
 
@@ -200,9 +200,9 @@ Disagreements (critic stricter than the construction label):
 |---|---|---|---|---|---|---|---|---|
 | 13 | daily-easy | `EHSD/SRUS/IPTR/ILEV` | 6/22 | 110 | 0.2 | 0.1982 | {'solvability_fairness': 5, 'difficulty_fit': 5, 'lexical_quality': 5, 'board_quality': 5} | heuristic |
 | 14 | daily-medium | `WASN/AKAL/TEWI/EIID` | 8/18 | 100 | 0.32 | 0.3189 | {'solvability_fairness': 5, 'difficulty_fit': 5, 'lexical_quality': 5, 'board_quality': 5} | heuristic |
-| 15 | daily-hard | `ULOTU/OOSOU/AESHU/DGPNN/TOHER` | 22/38 | 110 | 0.42 | 0.4006 | {'solvability_fairness': 5, 'difficulty_fit': 5, 'lexical_quality': 5, 'board_quality': 5} | heuristic |
+| 15 | daily-hard | `ULOTU/OOSOU/AESHU/DGPNN/TOHER` | 22/38 | 110 | 0.42 | 0.4005 | {'solvability_fairness': 5, 'difficulty_fit': 5, 'lexical_quality': 5, 'board_quality': 5} | heuristic |
 
-_0.9s, every publish approved by the release gate (solver proof + critic in ledger)_
+_1.4s, every publish approved by the release gate (solver proof + critic in ledger)_
 
 Release-gate decisions: {'approved': 5}
 
@@ -216,7 +216,7 @@ Release-gate decisions: {'approved': 5}
 | 4 | 1 | seed | False | 9 | 110 | 0.157 |  |
 | 5 | 1 | seed | False | 9 | 105 | 0.177 |  |
 | 6 | 1 | seed | False | 9 | 100 | 0.229 |  |
-| 7 | 3 | level_factory | False | 7 | 90 |  | 0.3522 |
+| 7 | 3 | level_factory | False | 7 | 90 |  | 0.3521 |
 | 8 | 1 | seed | False | 12 | 120 | 0.251 |  |
 | 9 | 1 | seed | False | 12 | 120 | 0.274 |  |
 | 10 | 1 | seed | False | 12 | 115 | 0.295 |  |
@@ -224,16 +224,16 @@ Release-gate decisions: {'approved': 5}
 | 12 | 1 | seed | False | 13 | 110 | 0.346 |  |
 | 13 | 1 | level_factory | True | 6 | 110 |  | 0.1982 |
 | 14 | 1 | level_factory | True | 8 | 100 |  | 0.3189 |
-| 15 | 1 | level_factory | True | 22 | 110 |  | 0.4006 |
+| 15 | 1 | level_factory | True | 22 | 110 |  | 0.4005 |
 
 ### Auto-rollback on live fail-rate spike
 
 | level | version | predicted | observed | attempts | spike | action |
 |---|---|---|---|---|---|---|
-| 7 | 3 | 0.3522 |  | 0 | False | none |
+| 7 | 3 | 0.3521 |  | 0 | False | none |
 | 13 | 1 | 0.1982 |  | 0 | False | none |
 | 14 | 1 | 0.3189 |  | 0 | False | none |
-| 15 | 1 | 0.4006 | 0.7833 | 60 | True | retired |
+| 15 | 1 | 0.4005 | 0.7833 | 60 | True | retired |
 
 Level 15 in rotation after monitor: **False**
 
@@ -243,17 +243,17 @@ Level 15 in rotation after monitor: **False**
 
 | tool | calls | ok | blocked by guard | p50 ms | p95 ms |
 |---|---|---|---|---|---|
-| baseline_metrics | 1 | 1 | 0 | 28.62 | 28.62 |
-| configure_flag | 4 | 2 | 2 | 7.66 | 10.74 |
-| critique_level | 162 | 162 | 0 | 2.04 | 3.15 |
-| evaluate_experiment | 9 | 9 | 0 | 31.66 | 97.25 |
-| generate_candidates | 5 | 5 | 0 | 81.86 | 452.7 |
-| live_level_health | 1 | 1 | 0 | 11.55 | 11.55 |
-| power_analysis | 1 | 1 | 0 | 0.33 | 0.33 |
-| propose_easier_level | 2 | 2 | 0 | 211.8 | 211.8 |
-| prove_level | 170 | 170 | 0 | 0.66 | 1.19 |
-| publish_level | 5 | 5 | 0 | 7.35 | 9.49 |
-| retire_level | 1 | 1 | 0 | 4.67 | 4.67 |
-| rollback_experiment | 1 | 1 | 0 | 7.98 | 7.98 |
-| scan_funnel | 1 | 1 | 0 | 7.34 | 7.34 |
-| ship_experiment | 1 | 1 | 0 | 8.2 | 8.2 |
+| baseline_metrics | 1 | 1 | 0 | 39.17 | 39.17 |
+| configure_flag | 4 | 2 | 2 | 9.93 | 10.02 |
+| critique_level | 162 | 162 | 0 | 2.67 | 6.85 |
+| evaluate_experiment | 9 | 9 | 0 | 69.44 | 158.9 |
+| generate_candidates | 5 | 5 | 0 | 113.3 | 657.6 |
+| live_level_health | 1 | 1 | 0 | 14.66 | 14.66 |
+| power_analysis | 1 | 1 | 0 | 0.71 | 0.71 |
+| propose_easier_level | 2 | 2 | 0 | 278.5 | 278.5 |
+| prove_level | 170 | 170 | 0 | 1.07 | 2.03 |
+| publish_level | 5 | 5 | 0 | 11.21 | 15.11 |
+| retire_level | 1 | 1 | 0 | 8.12 | 8.12 |
+| rollback_experiment | 1 | 1 | 0 | 6.69 | 6.69 |
+| scan_funnel | 1 | 1 | 0 | 17.29 | 17.29 |
+| ship_experiment | 1 | 1 | 0 | 12.2 | 12.2 |

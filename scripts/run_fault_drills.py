@@ -3,7 +3,7 @@
 BLOCK: Fault Drill CLI (same drills as the Control Center, from a terminal)
 --------------------------------------------------------------------------------
 Role & contracts
-  Runs the four production fault drills in app/fault_drills.py against
+  Runs the five production fault drills in app/fault_drills.py against
   data/telemetry.duckdb with spans exported to data/traces.duckdb, prints
   every step, and writes docs/fault_drills.json (fault -> guardrail -> trace
   ids). docs/THREE_WAYS_MY_AGENT_BROKE.md cites those trace ids.
@@ -51,7 +51,8 @@ def main() -> int:
     drills = [("1 LLM hallucinated unsolvable level", lambda: fd.drill_hallucinated_level(db, factory, log)),
               ("2 Ad network goes dark", lambda: fd.drill_network_dark(db, tracer, log)),
               ("3 Peeking false-positive experiment", lambda: fd.drill_peeking(tracer, log)),
-              ("4 Indirect prompt injection", lambda: fd.drill_prompt_injection(tracer, log))]
+              ("4 Indirect prompt injection", lambda: fd.drill_prompt_injection(tracer, log)),
+              ("5 Runaway token/cost loop", lambda: fd.drill_runaway_cost(tracer, log))]
     results = []
     for title, fn in drills:
         print(f"\n=== FAULT {title} ===")
@@ -65,7 +66,7 @@ def main() -> int:
     (REPO_ROOT / "docs" / "fault_drills.json").write_text(json.dumps(results, indent=2, default=str))
     db.close()
     ok = all(r["blocked"] for r in results)
-    print(f"\n{sum(r['blocked'] for r in results)}/4 faults mitigated automatically -> docs/fault_drills.json")
+    print(f"\n{sum(r['blocked'] for r in results)}/{len(results)} faults mitigated automatically -> docs/fault_drills.json")
     return 0 if ok else 1
 
 

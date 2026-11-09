@@ -15,14 +15,14 @@
     {
       "key": "p95_latency",
       "label": "p95 agent task latency",
-      "value": "35 ms",
-      "caption": "1,891 traced tasks; tool-call p95 29.3 ms (traces.duckdb)"
+      "value": "42 ms",
+      "caption": "948 traced tasks of this scorecard run; tool-call p95 36.5 ms (traces.duckdb; wall-clock, so it varies with the machine)"
     },
     {
       "key": "cost_per_task",
       "label": "LLM USD cost / task",
       "value": "$0.00033",
-      "caption": "mean over 368 LLM-driven runs at mock pricing; hard cap $0.25/run; workflows spend $0"
+      "caption": "mean over 185 LLM-driven runs at mock pricing; hard cap $0.25/run; workflows spend $0"
     },
     {
       "key": "cuped",
@@ -95,32 +95,32 @@
     "roots": [
       {
         "name": "workflow.run",
-        "n": 1523,
+        "n": 763,
         "p50_ms": 0.38,
-        "p95_ms": 36.58,
+        "p95_ms": 44.96,
         "success": 1.0
       },
       {
         "name": "agent.run",
-        "n": 368,
-        "p50_ms": 0.99,
-        "p95_ms": 3.39,
+        "n": 185,
+        "p50_ms": 1.29,
+        "p95_ms": 3.94,
         "success": 1.0
       }
     ],
-    "tool_calls": 2622,
-    "tool_p95_ms": 29.31,
-    "tasks": 1891,
-    "task_p95_ms": 34.88,
-    "llm_tasks": 368,
-    "llm_cost_per_task": 0.0003270370923913044,
+    "tool_calls": 1313,
+    "tool_p95_ms": 36.48,
+    "tasks": 948,
+    "task_p95_ms": 42.2,
+    "llm_tasks": 185,
+    "llm_cost_per_task": 0.000327102972972973,
     "llm_cost_max": 0.0007507499999999999
   },
   "level_taste": {
     "levels": [
       {
         "level": 1,
-        "fail": 0.04993252361673414,
+        "fail": 0.049943757030371204,
         "pred": 0.07,
         "ratio": 0.17647058823529413,
         "sec_per_word": 20.0,
@@ -168,8 +168,8 @@
       },
       {
         "level": 7,
-        "fail": 0.6271344303011487,
-        "pred": 0.5838,
+        "fail": 0.6270765409097966,
+        "pred": 0.5837,
         "ratio": 0.6363636363636364,
         "sec_per_word": 10.714285714285714,
         "words": 11
@@ -217,7 +217,7 @@
     ],
     "correlation_with_fail_rate": {
       "target_ratio": 0.846,
-      "seconds_per_required_word": -0.678,
+      "seconds_per_required_word": -0.679,
       "words_on_board": -0.374
     },
     "critic_on_fresh_candidates": {
@@ -297,8 +297,8 @@
       "calibration_points": [
         {
           "level_id": 1,
-          "attempts": 4446,
-          "fail_rate": 0.04993252361673414,
+          "attempts": 4445,
+          "fail_rate": 0.049943757030371204,
           "predicted": 0.07,
           "target": 6,
           "time_limit_s": 120,
@@ -351,9 +351,9 @@
         },
         {
           "level_id": 7,
-          "attempts": 6442,
-          "fail_rate": 0.6271344303011487,
-          "predicted": 0.5838,
+          "attempts": 6441,
+          "fail_rate": 0.6270765409097966,
+          "predicted": 0.5837,
           "target": 7,
           "time_limit_s": 75,
           "words": 11

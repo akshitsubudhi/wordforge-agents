@@ -170,6 +170,9 @@ class BudgetExceeded(RuntimeError):
         super().__init__(f"{kind}: {detail}")
 
 
+BudgetExceededError = BudgetExceeded  # public alias: the name the docs and tests use
+
+
 @dataclass
 class BudgetGuard:
     max_usd: float = 0.25

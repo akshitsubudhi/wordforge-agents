@@ -38,6 +38,12 @@ Key engineering mechanism
         `promote_after_h` clean hours)
       4 cooldown since the previous rollback has elapsed
     Rollback is a pre-approved WRITE (the safe direction) and is audited.
+  * Outage rollback: a network whose fill drops to exactly 0 (dark) while a
+    TRIAL floor is active triggers rollback_config(cause="network_dark")
+    BEFORE the quarantine: the floor reverts to the last-known-good config
+    (or the initial baseline if nothing was promoted yet), then the dark
+    network is disabled. The trial floor was tuned against the full bidder
+    set, so it is not trusted through an outage.
   * Quarantine: a network whose fill collapses to 0 (or z < -k on fills)
     WHILE the other networks stay healthy is disabled (several networks
     dropping together is systemic and is never quarantined, and while total
@@ -166,18 +172,25 @@ class Signal:
 
 
 class EWMADetector:
-    def __init__(self, lam: float = 0.25, k: float = 3.0, warmup: int = 8, confirm: int = 2, sd_floor_frac: float = 0.04):
+    def __init__(self, lam: float = 0.25, k: float = 3.0, warmup: int = 8, confirm: int = 2, sd_floor_frac: float = 0.04,
+                 seen_positive: bool = False):
         self.lam, self.k, self.warmup, self.confirm, self.sd_floor_frac = lam, k, warmup, confirm, sd_floor_frac
         self.n, self.mean, self.var, self.streak = 0, 0.0, 0.0, 0
         self._warm: list[float] = []
+        # carried across re-baselines: a series that has EVER been positive and reads exactly 0 is an outage, even
+        # when the 0 is the very first sample of a fresh warmup (the hour of a config change) or the warmup was
+        # all zeros (fixes: a network going dark in the same hour as a floor push was never detected)
+        self.seen_positive = seen_positive
 
     def update(self, x: float) -> Signal:
+        dark = x == 0 and self.seen_positive
+        self.seen_positive = self.seen_positive or x > 0
         if self.n < self.warmup:
-            dark = x == 0 and any(v > 0 for v in self._warm)  # outages are caught even while (re)warming
+            if dark:  # outages are caught even while (re)warming; an outage sample never enters the baseline
+                prior = [v for v in self._warm if v > 0]
+                return Signal(x, fmean(prior) if prior else None, None, True, True, "dark")
             self._warm.append(x)
             self.n += 1
-            if dark:
-                return Signal(x, fmean(self._warm[:-1]), None, True, True, "dark")
             if self.n == self.warmup:
                 self.mean = fmean(self._warm)
                 self.var = sum((v - self.mean) ** 2 for v in self._warm) / max(1, self.warmup - 1)
@@ -186,9 +199,8 @@ class EWMADetector:
         z = (x - self.mean) / sd
         breach = z < -self.k
         self.streak = self.streak + 1 if breach else 0
-        dark = x == 0 and self.mean > 0
         alarm = self.streak >= self.confirm or dark
-        if not breach:  # freeze the baseline while anomalous
+        if not breach and not dark:  # freeze the baseline while anomalous
             d = x - self.mean
             self.mean += self.lam * d
             self.var = (1 - self.lam) * (self.var + self.lam * d * d)
@@ -214,6 +226,10 @@ class NetArgs(StrictArgs):
 
 class RollbackArgs(StrictArgs):
     reason: str = Field(max_length=300)
+    # revenue_alarm: guarded by trial status + cooldown + an existing last-known-good config.
+    # network_dark: an outage invalidates whatever floor is on trial (it was tuned against the full bidder set);
+    #               reverts to the last-known-good config, or to the INITIAL baseline if nothing was promoted yet.
+    cause: str = Field(default="revenue_alarm", pattern="^(revenue_alarm|network_dark)$")
 
 
 class UAArgs(StrictArgs):
@@ -264,10 +280,20 @@ class AdOpsAgent:
                                WHERE status IN ('trial', 'good') ORDER BY version DESC LIMIT 1""").fetchone()
         return {"version": r[0], "reserve_cpm": r[1], "disabled": json.loads(r[2]), "status": r[3]}
 
+    def baseline(self) -> dict:
+        """The config a rollback restores: the last-known-good one, or the initial config if none was promoted."""
+        with self.db.cursor() as con:
+            r = con.execute("""SELECT version, reserve_cpm FROM ad_mediation_config
+                               ORDER BY (status = 'good') DESC, CASE WHEN status = 'good' THEN -version ELSE version END
+                               LIMIT 1""").fetchone()
+        return {"version": r[0], "reserve_cpm": r[1]}
+
     def _rebaseline(self) -> None:
         """A config change shifts every network's share of wins: re-learn per-network baselines (short warmup)
         so our own action is never mistaken for an outage. The dark (zero-fill) rule stays armed throughout."""
-        self.net_det = {n.name: EWMADetector(k=3.5, confirm=2, warmup=4) for n in self.sim.networks}
+        self.net_det = {n.name: EWMADetector(k=3.5, confirm=2, warmup=4,
+                                             seen_positive=self.net_det[n.name].seen_positive if n.name in self.net_det else False)
+                        for n in self.sim.networks}
 
     def _new_version(self, reserve: float, disabled: list[str], reason: str) -> int:
         self._rebaseline()
@@ -334,11 +360,15 @@ class AdOpsAgent:
         cur = self.active()
         if cur["status"] != "trial":
             raise ValueError("guard: active config is already known-good; nothing to roll back")
-        if self.hour - self.last_rollback_h < self.cooldown_h:
+        outage = a.cause == "network_dark"
+        if not outage and self.hour - self.last_rollback_h < self.cooldown_h:
             raise ValueError("guard: rollback cooldown active")
         with self.db.cursor() as con:
             lkg = con.execute("SELECT version, reserve_cpm, disabled FROM ad_mediation_config WHERE status='good' "
                               "ORDER BY version DESC LIMIT 1").fetchone()
+            if not lkg and outage:  # nothing promoted yet: the initial config IS the baseline
+                lkg = con.execute("SELECT version, reserve_cpm, disabled FROM ad_mediation_config "
+                                  "ORDER BY version LIMIT 1").fetchone()
             if not lkg:
                 raise ValueError("guard: no last-known-good config")
             # keep current quarantines: rolling back must not re-enable a dead network
@@ -351,8 +381,10 @@ class AdOpsAgent:
         self.last_rollback_h = self.hour
         self.clean_hours = 0
         self._rebaseline()
-        audit(self.db, "ad_ops", "rollback_config", from_version=cur["version"], to_version=v, lkg=lkg[0], reason=a.reason)
-        return {"from_version": cur["version"], "to_version": v, "restored_reserve_cpm": lkg[1], "lkg": lkg[0]}
+        audit(self.db, "ad_ops", "rollback_config", from_version=cur["version"], to_version=v, lkg=lkg[0], reason=a.reason,
+              cause=a.cause, hour=self.hour)
+        return {"from_version": cur["version"], "to_version": v, "restored_reserve_cpm": lkg[1], "lkg": lkg[0],
+                "from_reserve_cpm": cur["reserve_cpm"], "cause": a.cause}
 
     def _t_ua(self, a: UAArgs, ctx: ToolContext) -> dict:
         return {"day": a.day, "channel": a.channel, "context": a.context, "usd": a.usd, "accepted": True}
@@ -407,9 +439,27 @@ class AdOpsAgent:
                 else:
                     actions.append({"probe_ok": name})
                 dark_found = [d for d in dark_found if d[0] != name]
+            outage = [d for d in dark_found if d[1].reason == "dark"]
+            if outage and cfg_status == "trial":
+                base = self.baseline()
+                cur_reserve = obs["reserve_cpm"]
+                if abs(cur_reserve - base["reserve_cpm"]) > 1e-9:
+                    # AUTOMATIC ROLLBACK TO THE BASELINE FLOOR: the floor on trial was tuned against the full bidder
+                    # set; with a network dark it is unproven, so the outage is handled on the known-good floor.
+                    rb = wf.call_record("rollback_config", cause="network_dark",
+                                        reason=f"{outage[0][0]} went dark at h{hour} while floor ${cur_reserve:g} was on trial")
+                    if rb.ok:
+                        actions.append(rb.raw)
+                        self.total_det = EWMADetector(k=3.0, confirm=2)
+                        self.events.append({"hour": hour, "type": "rollback", "cause": "network_dark",
+                                            "from_reserve": cur_reserve, "to_reserve": rb.raw["restored_reserve_cpm"]})
+                    else:
+                        audit(self.db, "ad_ops", "rollback_refused", hour=hour, cause="network_dark")
+                        self.events.append({"hour": hour, "type": "escalate", "why": "outage rollback refused by guard"})
             for name, s in dark_found:
+                base_txt = f"{s.mean:.3f}" if s.mean is not None else "n/a"
                 rec = wf.call_record("quarantine_network", network=name,
-                                     reason=f"fill share {s.value:.3f} vs baseline {s.mean:.3f} (z={s.z}, {s.reason})")
+                                     reason=f"fill share {s.value:.3f} vs baseline {base_txt} (z={s.z}, {s.reason})")
                 if rec.ok:
                     actions.append(rec.raw)
                     self.quarantined[name] = hour
@@ -423,6 +473,7 @@ class AdOpsAgent:
                     self.probing = name
                     del self.quarantined[name]
                     self.events.append({"hour": hour, "type": "probe", "network": name})
+            cfg_status = self.active()["status"]  # an outage rollback / quarantine above may have changed it
             if tot.alarm and not dark_found:
                 recent = hour - self.last_change_h <= self.rollback_window_h
                 if cfg_status == "trial" and recent and hour - self.last_rollback_h >= self.cooldown_h:

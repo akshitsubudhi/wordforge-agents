@@ -78,7 +78,7 @@ from agents.soma_intake.extractor import (
 )
 from agents.soma_intake.portal_automation import PORTAL_URL, PortalClient
 from core.config import get_settings
-from core.harness.llm import MockLLM
+from core.harness.llm import MockLLM, is_real_llm
 from core.harness.redteam_guard import READ_WRITE, AgentPolicy, ApprovalRequest, DefenseConfig
 from core.harness.runner import AgentRunner, AgentSpec
 from core.harness.telemetry import Tracer, default_tracer
@@ -378,7 +378,7 @@ class IntakeEngine:
     def extraction(self, st: CaseState) -> CaseExtraction:
         key = st.case_id + ":" + ",".join(m.message_id for m in st.messages)
         if key not in self._ext_cache:
-            self._ext_cache[key] = extract(st.messages, self.llm)
+            self._ext_cache[key] = extract(st.messages, self.llm, tracer=self.runner.tracer)
         return self._ext_cache[key]
 
     # ---------------------------------------------------------------- policy approver (L3 gate)
@@ -439,7 +439,7 @@ class IntakeEngine:
         R, W, E = Privilege.READ, Privilege.WRITE, Privilege.EGRESS
         return ToolRegistry([
             ToolSpec("extract_case", "ACORD extraction with confidence + provenance", CaseArgs, self._t_extract, R,
-                     untrusted_output=True, timeout_s=30),
+                     untrusted_output=True, timeout_s=90 if is_real_llm(self.llm) else 30),
             ToolSpec("send_followup", "Ask the customer for missing/low-confidence fields", FollowupArgs, self._t_followup, E),
             ToolSpec("fill_portal", "Submit the application to the carrier portal", PortalArgs, self._t_portal, E,
                      requires_approval=True, timeout_s=30),
@@ -568,7 +568,9 @@ def engine() -> IntakeEngine:
     global _engine
     with _engine_lock:
         if _engine is None:
-            _engine = IntakeEngine(EventStore(get_settings().data_dir / "soma_intake.sqlite"))
+            from core.harness.llm import get_llm  # real provider when a key is set, deterministic mock otherwise
+
+            _engine = IntakeEngine(EventStore(get_settings().data_dir / "soma_intake.sqlite"), llm=get_llm())
         return _engine
 
 

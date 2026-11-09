@@ -37,8 +37,9 @@ if __package__ in (None, ""):
 import duckdb  # noqa: E402
 
 from core.config import REPO_ROOT, get_settings  # noqa: E402
+from core.db import DatabaseLockedError  # noqa: E402
 from core.harness.run_redteam_eval import run_suite  # noqa: E402
-from core.harness.telemetry import SPANS_DDL, InMemoryExporter, Tracer  # noqa: E402
+from core.harness.telemetry import InMemoryExporter, TracesBusyError, Tracer, traces_connection  # noqa: E402
 
 DOCS = REPO_ROOT / "docs"
 
@@ -49,23 +50,27 @@ def load(name: str) -> dict | None:
 
 
 def trace_stats() -> dict:
+    """Latency / cost of the scorecard's OWN workloads. Fault-drill spans are excluded: drills deliberately loop,
+    fail and burn budget, and whether `make faults` ran before this script must not change the published row."""
     p = get_settings().traces_db
     if not p.exists():
         return {}
-    con = duckdb.connect(str(p), read_only=True)
+    keep = "service_name <> 'fault-drills'"
     try:
-        con.execute("SELECT 1 FROM spans LIMIT 1")
-        roots = con.execute("""SELECT name, count(*) n, quantile_cont(duration_ms, 0.5) p50, quantile_cont(duration_ms, 0.95) p95,
-                                      avg((status <> 'ERROR')::INT) ok
-                               FROM spans WHERE parent_span_id IS NULL GROUP BY 1 ORDER BY n DESC""").fetchall()
-        tools = con.execute("""SELECT count(*), quantile_cont(duration_ms, 0.95) FROM spans WHERE name = 'tool.call'""").fetchone()
-        cost = con.execute("""WITH llm AS (SELECT trace_id, sum(cost_usd) c FROM spans WHERE name = 'llm.call' GROUP BY 1)
-                              SELECT count(*), avg(c), max(c) FROM llm""").fetchone()
-        allroot = con.execute("SELECT count(*), quantile_cont(duration_ms, 0.95) FROM spans WHERE parent_span_id IS NULL").fetchone()
+        with traces_connection(p) as con:
+            con.execute("SELECT 1 FROM spans LIMIT 1")
+            roots = con.execute(f"""SELECT name, count(*) n, quantile_cont(duration_ms, 0.5) p50, quantile_cont(duration_ms, 0.95) p95,
+                                          avg((status <> 'ERROR')::INT) ok
+                                   FROM spans WHERE parent_span_id IS NULL AND {keep} GROUP BY 1 ORDER BY n DESC""").fetchall()
+            tools = con.execute(f"""SELECT count(*), quantile_cont(duration_ms, 0.95) FROM spans WHERE name = 'tool.call' AND {keep}""").fetchone()
+            cost = con.execute(f"""WITH llm AS (SELECT trace_id, sum(cost_usd) c FROM spans WHERE name = 'llm.call' AND {keep} GROUP BY 1)
+                                  SELECT count(*), avg(c), max(c) FROM llm""").fetchone()
+            allroot = con.execute(f"SELECT count(*), quantile_cont(duration_ms, 0.95) FROM spans WHERE parent_span_id IS NULL AND {keep}").fetchone()
+    except TracesBusyError as e:
+        print(f"WARNING: {e}", file=sys.stderr)
+        return {}
     except duckdb.Error:
         return {}
-    finally:
-        con.close()
     return {"roots": [{"name": r[0], "n": r[1], "p50_ms": round(r[2], 2), "p95_ms": round(r[3], 2), "success": round(r[4], 4)} for r in roots],
             "tool_calls": tools[0], "tool_p95_ms": round(tools[1] or 0, 2), "tasks": allroot[0], "task_p95_ms": round(allroot[1] or 0, 2),
             "llm_tasks": cost[0], "llm_cost_per_task": cost[1] or 0.0, "llm_cost_max": cost[2] or 0.0}
@@ -121,6 +126,13 @@ def pct(x: float, d: int = 1) -> str:
 
 
 def main() -> int:
+    tdb = get_settings().telemetry_db
+    if tdb.exists():  # refuse to write a degraded scorecard while the server owns the single-writer lock
+        try:
+            duckdb.connect(str(tdb), read_only=True).close()
+        except duckdb.IOException as e:
+            print(f"ERROR: {DatabaseLockedError(tdb, str(e))}", file=sys.stderr)
+            return 2
     p2, ad, soma = load("phase2_scorecard.json"), load("phase3_ad_economy_scorecard.json"), load("phase3_soma_eval_scorecard.json")
     conf = run_suite(Tracer(InMemoryExporter()))
     tr = trace_stats()
@@ -137,7 +149,7 @@ def main() -> int:
          "value": pct(s_all["all_on"]["blocked"] / total, 0) + f" ({s_all['all_on']['blocked']}/{total})",
          "caption": f"{s_all['all_on']['false_alarms']}/{n['K']} false alarms; best single layer alone blocks {best_single}/{total}"},
         {"key": "p95_latency", "label": "p95 agent task latency",
-         **({"value": f"{tr['task_p95_ms']:.0f} ms", "caption": f"{tr['tasks']:,} traced tasks; tool-call p95 {tr['tool_p95_ms']:.1f} ms (traces.duckdb)"} if tr else need("phase2"))},
+         **({"value": f"{tr['task_p95_ms']:.0f} ms", "caption": f"{tr['tasks']:,} traced tasks of this scorecard run; tool-call p95 {tr['tool_p95_ms']:.1f} ms (traces.duckdb; wall-clock, so it varies with the machine)"} if tr else need("phase2"))},
         {"key": "cost_per_task", "label": "LLM USD cost / task",
          **({"value": f"${tr['llm_cost_per_task']:.5f}", "caption": f"mean over {tr['llm_tasks']} LLM-driven runs at mock pricing; hard cap $0.25/run; workflows spend $0"} if tr else need("phase2"))},
         {"key": "cuped", "label": "CUPED variance reduction",

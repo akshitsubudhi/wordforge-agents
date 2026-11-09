@@ -62,11 +62,11 @@ from pydantic import Field
 from agents.common import ApprovalLedger, audit, interactive_decider, utcnow
 from agents.liveops_copilot.simulator import COHORT_SQL
 from agents.liveops_copilot.stats_engine import (
-    MSPRT, cuped, guardrail_breached, sample_size_means, sample_size_proportions,
+    MSPRT, _var, cuped, guardrail_breached, sample_size_means, sample_size_proportions, unadjusted,
 )
 from core.config import get_settings
 from core.db import DatabaseLockedError, TelemetryDB
-from core.harness.llm import LLMClient, Message, MockLLM
+from core.harness.llm import LLMClient, get_llm, is_real_llm
 from core.harness.redteam_guard import (
     READ_ONLY, READ_WRITE, AgentPolicy, ApprovalRequest, DefenseConfig, ExpectedAction,
 )
@@ -151,7 +151,7 @@ class LiveOpsCopilot:
     def __init__(self, db: TelemetryDB, *, factory=None, llm: LLMClient | None = None,
                  decide: Callable[[ApprovalRequest], tuple[bool, str]] | None = None, decided_by: str = "operator",
                  tracer: Tracer | None = None, defenses: DefenseConfig = DefenseConfig()):
-        self.db, self.factory, self.llm = db, factory, llm or MockLLM("compliant")
+        self.db, self.factory, self.llm = db, factory, llm if llm is not None else get_llm()
         self.last_eval: dict[str, dict] = {}
         self.approvals = ApprovalLedger(db, "liveops_copilot", decide or interactive_decider, decided_by)
         self.runner = AgentRunner(
@@ -237,7 +237,10 @@ class LiveOpsCopilot:
     def _exposures(self, flag: str) -> list[tuple]:
         with self.db.cursor() as con:
             return con.execute("""
-                SELECT x.variant, x.day, x.pre_metric,
+                SELECT x.variant,
+                       coalesce(x.day, 1 + date_diff('day', (SELECT min(m.exposed_at) FROM experiment_exposures m
+                                                             WHERE m.flag = x.flag)::DATE, x.exposed_at::DATE)) AS day,
+                       x.pre_metric,
                        coalesce(x.outcome, (SELECT count(*) FROM events e WHERE e.user_id = x.user_id
                                               AND e.event_name = 'level_complete'
                                               AND e.ts BETWEEN x.exposed_at AND x.exposed_at + INTERVAL 7 DAY)) AS y,
@@ -246,14 +249,15 @@ class LiveOpsCopilot:
                                               AND e.ts::DATE = x.exposed_at::DATE + 1)) AS d1
                 FROM experiment_exposures x
                 WHERE x.flag = ? AND (x.source = 'sim' OR x.exposed_at < now()::TIMESTAMP - INTERVAL 7 DAY)
-                ORDER BY x.day""", [flag]).fetchall()
+                ORDER BY 2""", [flag]).fetchall()
 
     def _t_evaluate(self, a: EvalArgs, ctx: ToolContext) -> dict:
         rows = self._exposures(a.flag)
         if not rows:
             return {"flag": a.flag, "days": 0, "recommendation": "continue", "reason": "no exposures yet"}
         days = sorted({r[1] for r in rows})
-        ctrl_mean = statistics.fmean(r[3] for r in rows if r[0] == "control")
+        ctrl = [r[3] for r in rows if r[0] == "control"]
+        ctrl_mean = statistics.fmean(ctrl) if ctrl else 0.0
         primary = MSPRT(alpha=a.alpha, tau=max(1e-6, a.mde_rel * ctrl_mean))
         guard = MSPRT(alpha=a.alpha, tau=a.d1_tau)
         peeks = []
@@ -263,11 +267,20 @@ class LiveOpsCopilot:
             c = [r for r in cum if r[0] == "control"]
             if len(t) < 2 or len(c) < 2:
                 continue
-            cu = cuped([r[3] for r in t], [r[2] for r in t], [r[3] for r in c], [r[2] for r in c], a.alpha)
+            yt, yc = [float(r[3]) for r in t], [float(r[3]) for r in c]
+            xt, xc = [float(r[2] or 0) for r in t], [float(r[2] or 0) for r in c]
+            # CUPED needs a covariate that varies; brand-new players all have pre_metric 0 -> plain Welch estimate
+            cu = cuped(yt, xt, yc, xc, a.alpha) if _var(xt + xc) > 0 else unadjusted(yt, yc, a.alpha)
+            dt, dc = [float(r[4]) for r in t], [float(r[4]) for r in c]
+            if cu.var_cuped <= 0 or _var(dt) / len(dt) + _var(dc) / len(dc) <= 0:
+                continue   # an outcome with no variance yet carries no information: no peek, no decision
             p_step = primary.update(cu.effect_cuped, cu.var_cuped, len(t), len(c))
-            g_step = guard.update_from_samples([float(r[4]) for r in t], [float(r[4]) for r in c])
+            g_step = guard.update_from_samples(dt, dc)
             peeks.append({"day": d, "n_t": len(t), "n_c": len(c), "cuped": cu, "primary": p_step, "guardrail": g_step,
                           "guardrail_breached": guardrail_breached(g_step, a.guardrail_tolerance)})
+        if not peeks:
+            return {"flag": a.flag, "days": days[-1], "recommendation": "continue", "peeks": [],
+                    "reason": "not enough data per arm yet (need >= 2 users per arm and non-constant outcomes)"}
         last = peeks[-1]
         if any(p["guardrail_breached"] for p in peeks):
             first = next(p for p in peeks if p["guardrail_breached"])
@@ -387,10 +400,10 @@ class LiveOpsCopilot:
 
     def summarize(self, facts: dict) -> str:
         """Analyst summary: a real LLM writes it when configured; otherwise a deterministic template."""
-        if not isinstance(self.llm, MockLLM):
-            res = self.runner.run("Write a 5-bullet LiveOps summary for the CTO from these facts. Facts:\n"
-                                  + json.dumps(facts, default=str)[:6000])
-            if res.final_text:
+        if is_real_llm(self.llm):  # full agent run: budget cap, breaker, retries, spans; READ_ONLY = no side effects
+            res = self.runner.run("Write a 5-bullet LiveOps summary for the CTO from these facts. Do not call tools. "
+                                  "Facts:\n" + json.dumps(facts, default=str)[:6000], mode=READ_ONLY)
+            if res.status == "completed" and res.final_text:
                 return res.final_text
         a = facts.get("anomaly", {})
         lines = [f"- Detected: {a.get('message', 'no anomaly')}"]
