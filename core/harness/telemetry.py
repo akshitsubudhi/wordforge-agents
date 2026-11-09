@@ -16,7 +16,7 @@ Key engineering mechanism
     columns; the rest is a JSON string column (no JSON extension needed).
   * BatchSpanExporter: bounded deque buffer (maxlen) + background flusher
     (every flush_interval_s or batch_size spans). Each flush opens a
-    SHORT-LIVED DuckDB connection and executemany()s the batch, so the
+    SHORT-LIVED DuckDB connection and inserts the batch in one statement, so the
     dashboard / other processes can read between flushes (DuckDB is
     single-writer per file).
   * Metrics: quantile_cont() p50/p95/p99 per span name & tool in one SQL pass.
@@ -147,6 +147,15 @@ class InMemoryExporter:
         self.spans.append(span)
 
 
+def _insert_spans(con, rows: list[list]) -> None:
+    """One multi-row parameterised INSERT per chunk (executemany is one round trip PER ROW in duckdb)."""
+    one = "(" + ",".join("?" * len(SPAN_COLS)) + ")"
+    for i in range(0, len(rows), 200):
+        part = rows[i:i + 200]
+        con.execute(f"INSERT INTO spans ({','.join(SPAN_COLS)}) VALUES " + ",".join([one] * len(part)),
+                    [v for r in part for v in r])
+
+
 # One short-lived connection to a spans DB at a time PER PROCESS. DuckDB refuses a second attach of the same
 # file inside one process ("Unique file handle conflict") when a flush and a dashboard read overlap, and
 # another PROCESS holding the file lock raises IOException: both are retried here with backoff.
@@ -235,7 +244,7 @@ class DuckDBSpanExporter:
             return
         rows = [json.loads(line) for line in self.spool_path.read_text().splitlines() if line.strip()]
         if rows:
-            con.executemany(f"INSERT INTO spans ({','.join(SPAN_COLS)}) VALUES ({','.join('?' * len(SPAN_COLS))})", rows)
+            _insert_spans(con, rows)
         self.spool_path.unlink()
         self.stats["unspooled"] += len(rows)
 
@@ -252,8 +261,7 @@ class DuckDBSpanExporter:
                     if not self._schema_ready:
                         self._ingest_spool(con)
                         self._schema_ready = True
-                    con.executemany(f"INSERT INTO spans ({','.join(SPAN_COLS)}) VALUES ({','.join('?' * len(SPAN_COLS))})",
-                                    [s.to_row() for s in batch])
+                    _insert_spans(con, [s.to_row() for s in batch])
                 written += len(batch)
                 self.stats["exported"] += len(batch)
                 self._consecutive_failures = 0

@@ -33,7 +33,9 @@ import zlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from core.db import TelemetryDB
+from core.db import TelemetryDB, bulk_insert
+
+EXPOSURE_COLUMNS = ["flag", "user_id", "variant", "day", "exposed_at", "pre_metric", "outcome", "retained_d1", "source"]
 
 COHORT_SQL = """
 WITH first AS (SELECT user_id, min(ts) AS t0 FROM events WHERE source = 'seed' AND event_name = 'session_start' GROUP BY 1)
@@ -100,5 +102,5 @@ class ExperimentSimulator:
                     d1 = True
             rows.append([flag, f"x_{flag}_{day}_{i}", variant, day, t0 + timedelta(seconds=i), pre, post, d1, "sim"])
         with self.db.cursor() as con:
-            con.executemany("INSERT INTO experiment_exposures VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+            bulk_insert(con, "experiment_exposures", EXPOSURE_COLUMNS, rows)
         return {"day": day, "users": users, "treatment": n_t, "control": users - n_t}

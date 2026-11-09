@@ -111,12 +111,8 @@ def test_linear_algebra_helpers():
 
 
 @pytest.fixture()
-def tdb(data_dir):
-    from scripts.seed_telemetry import seed_database
-
-    con = open_rw(data_dir / "telemetry.duckdb")
-    seed_database(con, n_players=300, seed=5)
-    con.close()
+def tdb(data_dir, seeded_copy):
+    seeded_copy(data_dir, n_players=300, seed=5)   # a private copy per test: these tests mutate the ad tables
     db = TelemetryDB(data_dir / "telemetry.duckdb")
     yield db
     db.close()

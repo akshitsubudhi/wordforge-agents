@@ -48,7 +48,9 @@ from pydantic import ValidationError
 
 from core.config import get_settings
 
-from core.harness.llm import LLMClient, Message, PermanentLLMError, ToolCall, TransientLLMError, transcript_tokens
+from core.harness.llm import (
+    HEALTH, LLMClient, Message, PermanentLLMError, ToolCall, TransientLLMError, is_real_llm, transcript_tokens,
+)
 from core.harness.redteam_guard import (
     AgentPolicy, Approver, DefenseConfig, ExpectedAction, GuardDecision, PolicyGuard, PrivilegeGate,
     READ_ONLY, READ_WRITE, SessionState, UntrustedContentSanitizer, _fold, deny_all_approver,
@@ -91,7 +93,27 @@ def guarded_completion(llm: LLMClient, messages: list[Message], tools: list[dict
         def once():
             with breaker.guard():
                 return llm.complete(messages, tools, max_output_tokens)
-        resp, attempts = retry_call(once, retry_policy, retry_on=(TransientLLMError,), rng=rng or random.Random(0), sleep=sleep)
+        def on_retry(attempt: int, err: BaseException, delay: float) -> None:
+            sp.add_event("llm.retry", attempt=attempt, delay_s=round(delay, 3), error=f"{type(err).__name__}: {str(err)[:160]}")
+
+        def provider_events() -> None:   # retries / fallback that happened inside FallbackLLM belong on this span
+            for ev in (llm.drain_events() if hasattr(llm, "drain_events") else []):
+                sp.add_event(ev.pop("name"), **ev)
+
+        try:
+            resp, attempts = retry_call(once, retry_policy, retry_on=(TransientLLMError,), rng=rng or random.Random(0),
+                                        sleep=sleep, on_retry=on_retry)
+        except Exception as e:
+            provider_events()
+            if is_real_llm(llm):
+                state = HEALTH.record_error(e)
+                sp.set(error_class=state, retryable=isinstance(e, TransientLLMError))
+                sp.add_event("llm.error", error_class=state, error=f"{type(e).__name__}: {str(e)[:200]}")
+            raise
+        provider_events()
+        if is_real_llm(llm):
+            HEALTH.record_ok(llm.model, resp.model)
+            sp.set(served_by=resp.model, fallback=resp.model != llm.model)
         cost = budget.charge_llm(resp.model, resp.usage)
         sp.set(model=resp.model, input_tokens=resp.usage.input_tokens, output_tokens=resp.usage.output_tokens,
                cost_usd=round(cost, 8), attempts=attempts, n_tool_calls=len(resp.tool_calls))

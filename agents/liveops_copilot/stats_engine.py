@@ -161,48 +161,92 @@ def _welch(yt: Sequence[float], yc: Sequence[float]) -> tuple[float, float]:
     return fmean(yt) - fmean(yc), _var(yt) / len(yt) + _var(yc) / len(yc)
 
 
+@dataclass(frozen=True)
+class Moments:
+    """Sufficient statistics of one arm: n, sum x, sum y, sum x^2, sum y^2, sum xy (x = covariate, y = outcome).
+    They add across days, so a daily peek costs O(1) instead of re-reading every exposure so far."""
+    n: int = 0
+    sx: float = 0.0
+    sy: float = 0.0
+    sxx: float = 0.0
+    syy: float = 0.0
+    sxy: float = 0.0
+
+    @staticmethod
+    def of(y: Sequence[float], x: Sequence[float] | None = None) -> "Moments":
+        x = [0.0] * len(y) if x is None else x
+        if len(x) != len(y):
+            raise ValueError("outcome and covariate lengths differ")
+        return Moments(len(y), math.fsum(x), math.fsum(y), math.fsum(v * v for v in x), math.fsum(v * v for v in y),
+                       math.fsum(a * b for a, b in zip(x, y)))
+
+    def __add__(self, o: "Moments") -> "Moments":
+        return Moments(self.n + o.n, self.sx + o.sx, self.sy + o.sy, self.sxx + o.sxx, self.syy + o.syy, self.sxy + o.sxy)
+
+    def _ss(self, sq: float, a: float, b: float) -> float:
+        return (sq - a * b / self.n) / (self.n - 1)
+
+    @property
+    def var_x(self) -> float:
+        return max(0.0, self._ss(self.sxx, self.sx, self.sx))
+
+    @property
+    def var_y(self) -> float:
+        return max(0.0, self._ss(self.syy, self.sy, self.sy))
+
+    @property
+    def cov(self) -> float:
+        return self._ss(self.sxy, self.sx, self.sy)
+
+
+def _result(mt: Moments, mc: Moments, theta: float, rho: float, alpha: float) -> CupedResult:
+    eff_raw = mt.sy / mt.n - mc.sy / mc.n
+    eff_adj = eff_raw - theta * (mt.sx / mt.n - mc.sx / mc.n)
+    v_raw = mt.var_y / mt.n + mc.var_y / mc.n
+    adj = lambda m: max(0.0, m.var_y - 2 * theta * m.cov + theta * theta * m.var_x)   # Var(y - theta x) in one arm
+    v_adj = adj(mt) / mt.n + adj(mc) / mc.n
+    se_r, se_a = math.sqrt(v_raw), math.sqrt(v_adj)
+    zc = _z(1 - alpha / 2)
+    mean_c = mc.sy / mc.n
+    return CupedResult(
+        mt.n, mc.n, round(theta, 6), round(rho, 6), eff_raw, eff_adj, v_raw, v_adj,
+        round(100 * (1 - v_adj / v_raw), 2) if v_raw > 0 else 0.0, se_r, se_a,
+        _two_sided_p(eff_raw / se_r) if se_r > 0 else 1.0, _two_sided_p(eff_adj / se_a) if se_a > 0 else 1.0,
+        (eff_raw - zc * se_r, eff_raw + zc * se_r), (eff_adj - zc * se_a, eff_adj + zc * se_a),
+        mean_c, eff_adj / mean_c if mean_c else float("nan"),
+    )
+
+
+def cuped_from_moments(mt: Moments, mc: Moments, alpha: float = 0.05) -> CupedResult:
+    """CUPED from per-arm sufficient statistics. theta = cov(X,Y)/var(X) pooled over both arms."""
+    if min(mt.n, mc.n) < 2:
+        raise ValueError("need >= 2 units per arm")
+    pooled = mt + mc
+    vx = pooled.var_x
+    if vx <= 1e-12 * max(1.0, pooled.sxx / pooled.n):
+        raise ValueError("covariate has zero variance - CUPED undefined")
+    theta = pooled.cov / vx
+    vy = pooled.var_y
+    return _result(mt, mc, theta, pooled.cov / math.sqrt(vx * vy) if vy > 0 else 0.0, alpha)
+
+
 def cuped(y_t: Sequence[float], x_t: Sequence[float], y_c: Sequence[float], x_c: Sequence[float],
           alpha: float = 0.05) -> CupedResult:
     if len(y_t) != len(x_t) or len(y_c) != len(x_c):
         raise ValueError("outcome and covariate lengths differ")
-    if min(len(y_t), len(y_c)) < 2:
+    return cuped_from_moments(Moments.of(y_t, x_t), Moments.of(y_c, x_c), alpha)
+
+
+def unadjusted_from_moments(mt: Moments, mc: Moments, alpha: float = 0.05) -> CupedResult:
+    """Plain Welch estimate in the CupedResult shape (theta = 0): the documented fallback when CUPED is undefined
+    because the covariate has zero variance (e.g. an experiment on brand-new players with no pre-period)."""
+    if min(mt.n, mc.n) < 2:
         raise ValueError("need >= 2 units per arm")
-    xs, ys = list(x_t) + list(x_c), list(y_t) + list(y_c)
-    vx = _var(xs)
-    if vx == 0:
-        raise ValueError("covariate has zero variance - CUPED undefined")
-    cxy = _cov(xs, ys)
-    theta = cxy / vx
-    rho = cxy / math.sqrt(vx * _var(ys)) if _var(ys) > 0 else 0.0
-    mx = fmean(xs)
-    adj_t = [y - theta * (x - mx) for y, x in zip(y_t, x_t)]
-    adj_c = [y - theta * (x - mx) for y, x in zip(y_c, x_c)]
-    eff_raw, v_raw = _welch(y_t, y_c)
-    eff_adj, v_adj = _welch(adj_t, adj_c)
-    se_r, se_a = math.sqrt(v_raw), math.sqrt(v_adj)
-    zc = _z(1 - alpha / 2)
-    mc = fmean(y_c)
-    return CupedResult(
-        len(y_t), len(y_c), round(theta, 6), round(rho, 6), eff_raw, eff_adj, v_raw, v_adj,
-        round(100 * (1 - v_adj / v_raw), 2) if v_raw > 0 else 0.0, se_r, se_a,
-        _two_sided_p(eff_raw / se_r) if se_r > 0 else 1.0, _two_sided_p(eff_adj / se_a) if se_a > 0 else 1.0,
-        (eff_raw - zc * se_r, eff_raw + zc * se_r), (eff_adj - zc * se_a, eff_adj + zc * se_a),
-        mc, eff_adj / mc if mc else float("nan"),
-    )
+    return _result(mt, mc, 0.0, 0.0, alpha)
 
 
 def unadjusted(y_t: Sequence[float], y_c: Sequence[float], alpha: float = 0.05) -> CupedResult:
-    """Plain Welch estimate in the CupedResult shape (theta = 0): the documented fallback when CUPED is undefined
-    because the covariate has zero variance (e.g. an experiment on brand-new players with no pre-period)."""
-    if min(len(y_t), len(y_c)) < 2:
-        raise ValueError("need >= 2 units per arm")
-    eff, v = _welch(y_t, y_c)
-    se = math.sqrt(v)
-    zc = _z(1 - alpha / 2)
-    p = _two_sided_p(eff / se) if se > 0 else 1.0
-    mc = fmean(y_c)
-    return CupedResult(len(y_t), len(y_c), 0.0, 0.0, eff, eff, v, v, 0.0, se, se, p, p, (eff - zc * se, eff + zc * se),
-                       (eff - zc * se, eff + zc * se), mc, eff / mc if mc else float("nan"))
+    return unadjusted_from_moments(Moments.of(y_t), Moments.of(y_c), alpha)
 
 
 # ============================================================================ mSPRT

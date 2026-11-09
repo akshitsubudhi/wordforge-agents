@@ -62,7 +62,8 @@ from pydantic import Field
 from agents.common import ApprovalLedger, audit, interactive_decider, utcnow
 from agents.liveops_copilot.simulator import COHORT_SQL
 from agents.liveops_copilot.stats_engine import (
-    MSPRT, _var, cuped, guardrail_breached, sample_size_means, sample_size_proportions, unadjusted,
+    MSPRT, Moments, cuped_from_moments, guardrail_breached, sample_size_means, sample_size_proportions,
+    unadjusted_from_moments,
 )
 from core.config import get_settings
 from core.db import DatabaseLockedError, TelemetryDB
@@ -235,48 +236,56 @@ class LiveOpsCopilot:
         return {"flag": a.flag, "status": "active", "control_version": control, **a.model_dump()}
 
     def _exposures(self, flag: str) -> list[tuple]:
+        """Per (day, variant) sufficient statistics of every analysable exposure: n, sum x, sum y, sum x^2, sum y^2,
+        sum xy, sum d1. Aggregated in DuckDB so a peek costs O(days), not O(exposures x days)."""
         with self.db.cursor() as con:
             return con.execute("""
+                WITH rows AS (
                 SELECT x.variant,
                        coalesce(x.day, 1 + date_diff('day', (SELECT min(m.exposed_at) FROM experiment_exposures m
                                                              WHERE m.flag = x.flag)::DATE, x.exposed_at::DATE)) AS day,
-                       x.pre_metric,
+                       coalesce(x.pre_metric, 0)::DOUBLE AS pre,
                        coalesce(x.outcome, (SELECT count(*) FROM events e WHERE e.user_id = x.user_id
                                               AND e.event_name = 'level_complete'
-                                              AND e.ts BETWEEN x.exposed_at AND x.exposed_at + INTERVAL 7 DAY)) AS y,
+                                              AND e.ts BETWEEN x.exposed_at AND x.exposed_at + INTERVAL 7 DAY))::DOUBLE AS y,
                        coalesce(x.retained_d1, EXISTS (SELECT 1 FROM events e WHERE e.user_id = x.user_id
                                               AND e.event_name = 'session_start'
-                                              AND e.ts::DATE = x.exposed_at::DATE + 1)) AS d1
+                                              AND e.ts::DATE = x.exposed_at::DATE + 1))::INT::DOUBLE AS d1
                 FROM experiment_exposures x
-                WHERE x.flag = ? AND (x.source = 'sim' OR x.exposed_at < now()::TIMESTAMP - INTERVAL 7 DAY)
-                ORDER BY 2""", [flag]).fetchall()
+                WHERE x.flag = ? AND (x.source = 'sim' OR x.exposed_at < now()::TIMESTAMP - INTERVAL 7 DAY))
+                SELECT variant, day, count(*), sum(pre), sum(y), sum(pre * pre), sum(y * y), sum(pre * y), sum(d1)
+                FROM rows GROUP BY 1, 2 ORDER BY 2, 1""", [flag]).fetchall()
 
     def _t_evaluate(self, a: EvalArgs, ctx: ToolContext) -> dict:
         rows = self._exposures(a.flag)
         if not rows:
             return {"flag": a.flag, "days": 0, "recommendation": "continue", "reason": "no exposures yet"}
         days = sorted({r[1] for r in rows})
-        ctrl = [r[3] for r in rows if r[0] == "control"]
-        ctrl_mean = statistics.fmean(ctrl) if ctrl else 0.0
+        by_day = {(r[1], r[0]): (Moments(*r[2:8]), Moments(r[2], 0.0, r[8], 0.0, r[8], 0.0)) for r in rows}
+        n_ctrl = sum(r[2] for r in rows if r[0] == "control")
+        ctrl_mean = sum(r[4] for r in rows if r[0] == "control") / n_ctrl if n_ctrl else 0.0
         primary = MSPRT(alpha=a.alpha, tau=max(1e-6, a.mde_rel * ctrl_mean))
         guard = MSPRT(alpha=a.alpha, tau=a.d1_tau)
+        zero = (Moments(), Moments())
+        cum = {"treatment": zero, "control": zero}
         peeks = []
-        for d in days:  # deterministic replay of every daily peek
-            cum = [r for r in rows if r[1] <= d]
-            t = [r for r in cum if r[0] == "treatment"]
-            c = [r for r in cum if r[0] == "control"]
-            if len(t) < 2 or len(c) < 2:
+        for d in days:  # deterministic replay of every daily peek, on running sums
+            for v in cum:
+                m, g = by_day.get((d, v), zero)
+                cum[v] = (cum[v][0] + m, cum[v][1] + g)
+            (mt, gt), (mc, gc) = cum["treatment"], cum["control"]
+            if mt.n < 2 or mc.n < 2:
                 continue
-            yt, yc = [float(r[3]) for r in t], [float(r[3]) for r in c]
-            xt, xc = [float(r[2] or 0) for r in t], [float(r[2] or 0) for r in c]
-            # CUPED needs a covariate that varies; brand-new players all have pre_metric 0 -> plain Welch estimate
-            cu = cuped(yt, xt, yc, xc, a.alpha) if _var(xt + xc) > 0 else unadjusted(yt, yc, a.alpha)
-            dt, dc = [float(r[4]) for r in t], [float(r[4]) for r in c]
-            if cu.var_cuped <= 0 or _var(dt) / len(dt) + _var(dc) / len(dc) <= 0:
+            try:  # CUPED needs a covariate that varies; brand-new players all have pre_metric 0 -> plain Welch estimate
+                cu = cuped_from_moments(mt, mc, a.alpha)
+            except ValueError:
+                cu = unadjusted_from_moments(mt, mc, a.alpha)
+            g_var = gt.var_y / gt.n + gc.var_y / gc.n   # d1 is 0/1: sum d^2 == sum d
+            if cu.var_cuped <= 0 or g_var <= 0:
                 continue   # an outcome with no variance yet carries no information: no peek, no decision
-            p_step = primary.update(cu.effect_cuped, cu.var_cuped, len(t), len(c))
-            g_step = guard.update_from_samples(dt, dc)
-            peeks.append({"day": d, "n_t": len(t), "n_c": len(c), "cuped": cu, "primary": p_step, "guardrail": g_step,
+            p_step = primary.update(cu.effect_cuped, cu.var_cuped, mt.n, mc.n)
+            g_step = guard.update(gt.sy / gt.n - gc.sy / gc.n, g_var, gt.n, gc.n)
+            peeks.append({"day": d, "n_t": mt.n, "n_c": mc.n, "cuped": cu, "primary": p_step, "guardrail": g_step,
                           "guardrail_breached": guardrail_breached(g_step, a.guardrail_tolerance)})
         if not peeks:
             return {"flag": a.flag, "days": days[-1], "recommendation": "continue", "peeks": [],

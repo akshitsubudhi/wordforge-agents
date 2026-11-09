@@ -74,11 +74,8 @@ def data_dir(tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
-def seeded(data_dir, lex):
-    con = open_rw(data_dir / "telemetry.duckdb")
-    report = seed_database(con, n_players=300, seed=42, lex=lex)
-    con.close()
-    return report
+def seeded(data_dir, seeded_copy):
+    return seeded_copy(data_dir, n_players=300, seed=42)
 
 
 # ============================================================================ lexicon + grid

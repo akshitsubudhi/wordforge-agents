@@ -3,7 +3,7 @@
     "anomaly": "Level 7 has a 63% fail rate (median of other levels 23%, robust z 3.7)",
     "cuped_variance_reduction_pct": 7.06,
     "cuped_rho": 0.264406,
-    "relative_lift": 0.11490492054707906,
+    "relative_lift": 0.11490492054707914,
     "good_d1_delta": 0.0089,
     "good_d1_ci": [
       -0.01369,

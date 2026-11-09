@@ -108,6 +108,15 @@ def health(request: Request) -> dict:
     return {"status": "ok", "events": n}
 
 
+@app.get("/api/llm/status")
+def llm_provider_status() -> dict:
+    """Which model provider is configured, whether it is answering, and what to do when it is not (bad key,
+    HTTP 429 insufficient_quota, outage). Agents keep running on the deterministic fallback either way."""
+    from core.harness.llm import llm_status
+
+    return llm_status()
+
+
 @app.get("/api/telemetry/recent")
 def recent(request: Request, limit: int = 25, source: str = "live") -> dict:
     rows = request.app.state.db.query(

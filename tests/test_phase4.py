@@ -28,7 +28,7 @@ from core.harness.telemetry import DuckDBSpanExporter, Tracer
 
 
 @pytest.fixture(scope="module")
-def client(tmp_path_factory):
+def client(tmp_path_factory, seeded_copy):
     from fastapi.testclient import TestClient
 
     from scripts.seed_telemetry import seed_database
@@ -38,9 +38,7 @@ def client(tmp_path_factory):
     os.environ["LIVEOPS_DATA_DIR"] = str(d)
     import core.harness.telemetry as tel
     tel._default = None                       # traces for this module go to the temp dir
-    con = open_rw(d / "telemetry.duckdb")
-    seed_database(con, n_players=400, seed=4)
-    con.close()
+    seeded_copy(d, n_players=400, seed=4)
     from app.main import app
 
     with TestClient(app) as c:

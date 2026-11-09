@@ -195,6 +195,18 @@ def open_rw(path: Path) -> duckdb.DuckDBPyConnection:
     return con
 
 
+def bulk_insert(con, table: str, cols: list[str], rows: list[list], chunk: int = 400) -> None:
+    """Multi-row parameterised INSERT. duckdb's executemany() binds and executes one statement per row (~1 ms
+    each); one VALUES list per chunk is 30-50x faster and still fully parameterised (no string-built values)."""
+    if not rows:
+        return
+    one = "(" + ",".join("?" * len(cols)) + ")"
+    head = f"INSERT INTO {table} ({','.join(cols)}) VALUES "
+    for i in range(0, len(rows), chunk):
+        part = rows[i:i + chunk]
+        con.execute(head + ",".join([one] * len(part)), [v for r in part for v in r])
+
+
 class TelemetryDB:
     """Long-lived writer used by the server. Thread-safe via an RLock."""
 
@@ -211,10 +223,9 @@ class TelemetryDB:
     def insert_events(self, rows: list[dict]) -> None:
         if not rows:
             return
-        placeholders = ",".join("?" * len(EVENT_COLUMNS))
         vals = [[r.get(c) for c in EVENT_COLUMNS] for r in rows]
         with self.cursor() as con:
-            con.executemany(f"INSERT INTO events ({','.join(EVENT_COLUMNS)}) VALUES ({placeholders})", vals)
+            bulk_insert(con, "events", EVENT_COLUMNS, vals)
 
     def query(self, sql: str, params: list | None = None) -> list[dict]:
         with self.cursor() as con:

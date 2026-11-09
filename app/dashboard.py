@@ -55,6 +55,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from core.config import REPO_ROOT, get_settings
+from core.harness.llm import HEALTH, llm_status
 from core.harness.telemetry import TracesBusyError, agent_metrics, default_tracer, traces_connection
 
 router = APIRouter(tags=["control-center"])
@@ -104,9 +105,15 @@ class JobQueue:
                 continue
             job.status = "running"
             log = lambda s, j=job: j.steps.append({"i": len(j.steps), "t": round(time.time(), 3), **s})
+            before = HEALTH.snapshot()["calls"]
             try:
                 job.result = self.handlers[job.kind](job, log)
                 job.status = "done"
+                st = llm_status()
+                if st["mode"] == "live" and not st["ok"] and HEALTH.snapshot()["calls"] != before:
+                    # the job finished on the deterministic fallback: say so, with the fix, instead of hiding it
+                    log({"status": "info", "title": f"LLM provider unavailable during this job: {st['message']}",
+                         "detail": f"{st['action']} Last error: {st['last_error'][:200]}", "llm": st})
             except Exception as e:  # never kill the worker
                 job.status, job.error = "error", f"{type(e).__name__}: {e}"
                 log({"status": "bad", "title": "job failed", "detail": traceback.format_exc()[-800:]})
@@ -212,7 +219,7 @@ def register_handlers(app) -> None:
         from core.harness.redteam_guard import READ_WRITE
 
         log({"status": "info", "title": f"Generating {n} candidates: {size}x{size}, {tl}s, target fail rate {goal:.0%}",
-             "detail": f"generator: {'LLM + heuristic' if f.generator.uses_llm else 'deterministic heuristic (no API key)'}"})
+             "detail": f"generator: {'LLM (' + f.llm.model + ') + heuristic' if f.generator.uses_llm else 'deterministic heuristic (mock LLM)'}"})
         with f.runner.workflow("cc:factory_push", mode=READ_WRITE) as wf:
             cands = wf.call("generate_candidates", goal=goal, size=size, time_limit_s=tl, n=n, slot="control-center")
             best, rows = None, []
@@ -454,7 +461,7 @@ def job_status(job_id: str, request: Request, since: int = 0) -> dict:
         raise HTTPException(404, "unknown job")
     return {"job_id": job.id, "kind": job.kind, "status": job.status, "steps": job.steps[since:], "next": len(job.steps),
             "result": job.result if job.status in ("done", "error") else None, "error": job.error,
-            "seconds": round((job.finished or time.time()) - job.created, 2)}
+            "seconds": round((job.finished or time.time()) - job.created, 2), "llm": llm_status()}
 
 
 @router.post("/api/cc/approvals/{approval_id}")
@@ -494,7 +501,7 @@ def overview(request: Request) -> dict:
     except Exception as e:
         spans = {"spans": None, "traces": None, "error": str(e)[:120]}
     score = json.loads(SCORECARD.read_text()) if SCORECARD.exists() else None
-    return {"counts": counts, "traces": spans, "scorecard": score}
+    return {"counts": counts, "traces": spans, "scorecard": score, "llm": llm_status()}
 
 
 @router.get("/api/cc/metrics")

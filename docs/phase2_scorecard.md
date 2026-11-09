@@ -1,6 +1,6 @@
 # Phase 2 Scorecard
 
-_Generated 2026-11-09, 39.7s, LLM: deterministic mock (set ANTHROPIC_API_KEY or OPENAI_API_KEY and LLM_PROVIDER=auto for a real provider)._
+_Generated 2026-11-09, 8.5s, LLM: deterministic mock (set ANTHROPIC_API_KEY or OPENAI_API_KEY and LLM_PROVIDER=auto for a real provider)._
 
 | check | result | detail |
 |---|---|---|
@@ -202,7 +202,7 @@ Disagreements (critic stricter than the construction label):
 | 14 | daily-medium | `WASN/AKAL/TEWI/EIID` | 8/18 | 100 | 0.32 | 0.3189 | {'solvability_fairness': 5, 'difficulty_fit': 5, 'lexical_quality': 5, 'board_quality': 5} | heuristic |
 | 15 | daily-hard | `ULOTU/OOSOU/AESHU/DGPNN/TOHER` | 22/38 | 110 | 0.42 | 0.4005 | {'solvability_fairness': 5, 'difficulty_fit': 5, 'lexical_quality': 5, 'board_quality': 5} | heuristic |
 
-_1.4s, every publish approved by the release gate (solver proof + critic in ledger)_
+_1.3s, every publish approved by the release gate (solver proof + critic in ledger)_
 
 Release-gate decisions: {'approved': 5}
 
@@ -243,17 +243,17 @@ Level 15 in rotation after monitor: **False**
 
 | tool | calls | ok | blocked by guard | p50 ms | p95 ms |
 |---|---|---|---|---|---|
-| baseline_metrics | 1 | 1 | 0 | 39.17 | 39.17 |
-| configure_flag | 4 | 2 | 2 | 9.93 | 10.02 |
-| critique_level | 162 | 162 | 0 | 2.67 | 6.85 |
-| evaluate_experiment | 9 | 9 | 0 | 69.44 | 158.9 |
-| generate_candidates | 5 | 5 | 0 | 113.3 | 657.6 |
-| live_level_health | 1 | 1 | 0 | 14.66 | 14.66 |
-| power_analysis | 1 | 1 | 0 | 0.71 | 0.71 |
-| propose_easier_level | 2 | 2 | 0 | 278.5 | 278.5 |
-| prove_level | 170 | 170 | 0 | 1.07 | 2.03 |
-| publish_level | 5 | 5 | 0 | 11.21 | 15.11 |
-| retire_level | 1 | 1 | 0 | 8.12 | 8.12 |
-| rollback_experiment | 1 | 1 | 0 | 6.69 | 6.69 |
-| scan_funnel | 1 | 1 | 0 | 17.29 | 17.29 |
-| ship_experiment | 1 | 1 | 0 | 12.2 | 12.2 |
+| baseline_metrics | 1 | 1 | 0 | 34.17 | 34.17 |
+| configure_flag | 4 | 2 | 2 | 9.63 | 10.22 |
+| critique_level | 162 | 162 | 0 | 2.5 | 5.26 |
+| evaluate_experiment | 9 | 9 | 0 | 17.56 | 29.6 |
+| generate_candidates | 5 | 5 | 0 | 112.7 | 662.8 |
+| live_level_health | 1 | 1 | 0 | 12.03 | 12.03 |
+| power_analysis | 1 | 1 | 0 | 0.41 | 0.41 |
+| propose_easier_level | 2 | 2 | 0 | 267.9 | 267.9 |
+| prove_level | 170 | 170 | 0 | 0.95 | 1.74 |
+| publish_level | 5 | 5 | 0 | 9.95 | 11.33 |
+| retire_level | 1 | 1 | 0 | 6.41 | 6.41 |
+| rollback_experiment | 1 | 1 | 0 | 6.91 | 6.91 |
+| scan_funnel | 1 | 1 | 0 | 10.63 | 10.63 |
+| ship_experiment | 1 | 1 | 0 | 10.36 | 10.36 |

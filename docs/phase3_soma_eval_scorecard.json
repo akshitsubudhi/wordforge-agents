@@ -1,7 +1,7 @@
 {
   "dev": {
     "n": 50,
-    "seconds": 5.9,
+    "seconds": 6.1,
     "style": "dev",
     "extraction": {
       "precision": 1.0,
@@ -308,7 +308,7 @@
   },
   "heldout": {
     "n": 50,
-    "seconds": 6.2,
+    "seconds": 6.3,
     "style": "heldout",
     "extraction": {
       "precision": 0.952,

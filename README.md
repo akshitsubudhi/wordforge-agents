@@ -20,7 +20,7 @@ In the first 60 seconds you can:
 
 ## Production & evaluation scorecard
 
-Regenerate everything with `make scorecard` (about 2 minutes; stop the server first). The source is
+Regenerate everything with `make scorecard` (about 1 minute; stop the server first). The source is
 [`docs/scorecard.json`](docs/scorecard.json). Every row below was regenerated from a freshly seeded database by that
 one command; `make scorecard` pins `LLM_PROVIDER=mock` and wipes `traces.duckdb` first, so the numbers do not depend
 on an exported API key or on what ran earlier. The only machine-dependent row is latency (wall-clock).
@@ -29,7 +29,7 @@ on an exported API key or on what ran earlier. The only machine-dependent row is
 |---|---|---|
 | **Eval agreement**: critic vs golden set | **96.0%** (Cohen's κ 0.92) | 4-rubric level critic vs 100 labelled levels. It catches 46/46 injected defects; all 4 disagreements are the critic being stricter (boards where most words are 3 letters). Labels come from construction, not human raters. |
 | **Red-team block rate** | **100%** (25/25), 0/10 false alarms | Guardrail conformance suite through the real runner. Ablation: the best *single* defence layer blocks only 9/25. |
-| **p95 agent task latency** | **42 ms** | p95 of the 948 agent tasks one scorecard run traces into `traces.duckdb` (tool-call p95 37 ms). Wall-clock on the machine that ran it, so expect ±50%; the task count is exact. Deterministic workflows plus the mock LLM, so a real model adds its own latency. |
+| **p95 agent task latency** | **47 ms** | p95 of the 948 agent tasks one scorecard run traces into `traces.duckdb` (tool-call p95 38 ms). Wall-clock on the machine that ran it, so expect ±50%; the task count is exact. Deterministic workflows plus the mock LLM, so a real model adds its own latency. |
 | **USD cost per task** | **$0.00033** | Mean LLM spend over the 185 LLM-driven runs of the conformance suite, at mock pricing. Deterministic workflows spend $0. A hard pre-call cap (`HARNESS_MAX_RUN_USD`, default $0.25) stops any run before it can overspend. |
 | **CUPED variance reduction** | **7.1%** | ρ = 0.26 between week-1 and week-2 completions in the seeded cohort, so ≈ρ² as theory predicts (8,429 → 7,774 users needed). It's modest because the seeder front-loads play; a ρ = 0.77 synthetic check gives 60%. |
 | **D1 retention** | **−4.7pp harm caught on day 2** | A deliberately harmful variant was auto-rolled back when its always-valid CI fell below 0. The shipped variant's D1 was +0.9pp with a CI spanning 0, so **no lift is claimed**. |
@@ -45,11 +45,11 @@ component. Nothing is mocked except the fault itself.
 
 | # | Fault | Guardrail that fires | Result | Trace (run that wrote this README) |
 |---|---|---|---|---|
-| 1 | LLM hallucinates an unsolvable level: claims "planet, zebra, quartz" and asks for 20 words; the board has 12 | `solver.py` Trie+DFS proof → 4-rubric critic → release gate (L3 `approval_denied`) → `publish_version` re-solve | Stopped at independent gates; live rotation unchanged | `5de6382957b15c395096bf85b54b78cf` |
-| 2 | Ad network goes dark (hangs until timeout) while a tuned $6 floor is on trial | EWMA dark rule → `rollback_config` to the $2 baseline floor → `quarantine_network` (circuit open) → half-open probes | Rolled back and quarantined in the same hour; post-outage revenue +44% vs unguarded | `0aa5c91d6e00ad998f8fe6771df2e7c4` |
-| 3 | Peeking false positive: an A/A test peeked daily | mSPRT always-valid p → copilot ship gate | A naive t-test would ship on day 8 (p = 0.033); mSPRT p = 0.49. FPR 19% → 1.7% over 300 A/A runs | `5f42b183eb6d7c8fd83f01eb3237e6e0` |
-| 4 | Indirect prompt injection: a support ticket carries a tool directive to set a flag to 100% | L2 spotlight redaction → L1 `PolicyGuard` 20% cap → L3 approval | Executes only with defences off; L2 redacts it, and L1 blocks it if L2 is removed | `40bfab169f304c302a54f78f444247fb` |
-| 5 | Runaway token/cost loop: a paginated tool keeps telling the agent to fetch the next page | `BudgetGuard` worst-case pre-call check → `BudgetExceededError` | Killed after 7 LLM calls at $0.0011 (cap $0.002); uncapped it burns 519k tokens in 60 steps and keeps going | `d4dce58d647139b44865e86429e961a2` |
+| 1 | LLM hallucinates an unsolvable level: claims "planet, zebra, quartz" and asks for 20 words; the board has 12 | `solver.py` Trie+DFS proof → 4-rubric critic → release gate (L3 `approval_denied`) → `publish_version` re-solve | Stopped at independent gates; live rotation unchanged | `16d30cf4f5f52240a44fa506157dc0c1` |
+| 2 | Ad network goes dark (hangs until timeout) while a tuned $6 floor is on trial | EWMA dark rule → `rollback_config` to the $2 baseline floor → `quarantine_network` (circuit open) → half-open probes | Rolled back and quarantined in the same hour; post-outage revenue +44% vs unguarded | `1dc40b804ea495188eeba15ddd9bda1d` |
+| 3 | Peeking false positive: an A/A test peeked daily | mSPRT always-valid p → copilot ship gate | A naive t-test would ship on day 8 (p = 0.033); mSPRT p = 0.49. FPR 19% → 1.7% over 300 A/A runs | `ae0234671975f1dec320f492b52c4a6c` |
+| 4 | Indirect prompt injection: a support ticket carries a tool directive to set a flag to 100% | L2 spotlight redaction → L1 `PolicyGuard` 20% cap → L3 approval | Executes only with defences off; L2 redacts it, and L1 blocks it if L2 is removed | `e657deaac1277f1234d92f0b4920e7e7` |
+| 5 | Runaway token/cost loop: a paginated tool keeps telling the agent to fetch the next page | `BudgetGuard` worst-case pre-call check → `BudgetExceededError` | Killed after 7 LLM calls at $0.0011 (cap $0.002); uncapped it burns 519k tokens in 60 steps and keeps going | `bb48391983b56ed8953d5252ae91747b` |
 
 Trace IDs resolve in `data/traces.duckdb` on the machine that ran them (`SELECT * FROM spans WHERE trace_id = …`).
 `make faults` produces fresh ones in `docs/fault_drills.json`.
@@ -83,7 +83,7 @@ Each block: how it's built, and the one-line hook that stops it failing.
 | **Harness** `core/harness/runner.py` | Fixed per-call pipeline, plus a no-LLM `workflow()` mode for deterministic steps | Unknown tool or extra field: a non-switchable checkpoint blocks it |
 | **Defences** `core/harness/redteam_guard.py` | L1: allowlist plus argument rules (SQL parser, realpath, exact domains, 20% cap). L2: normalise, decode, redact, nonce boundaries. L3: READ_ONLY tokens, taint → approval, copied-argument block, DLP, output filter | Conformance gate in CI: 25/25 blocked, 0/10 false alarms |
 | **Resilience** `core/harness/resilience.py` | Full-jitter backoff, circuit breaker, worst-case pre-call cost check, `python -I -S` sandbox with rlimits and an audit hook | Spend can never exceed the cap (`BudgetExceededError` is raised before the call); retries happen only on idempotent tools |
-| **LLM layer** `core/harness/llm.py`, `runner.guarded_completion` | `get_llm()` picks Anthropic / OpenAI / mock from the environment; every model call (agent loop, level generator, critic, Soma extractor) goes through one function: budget pre-check → breaker → jittered retry → priced `llm.call` span | Outage: retries, then the breaker serves the mock. Bad key or no credits: a recorded `error`, never a crash and never retried |
+| **LLM layer** `core/harness/llm.py`, `runner.guarded_completion` | `get_llm()` picks Anthropic / OpenAI / mock from the environment; every model call (agent loop, level generator, critic, Soma extractor) goes through one function: budget pre-check → breaker → jittered retry → priced `llm.call` span | Outage or rate limit: retries, then the breaker serves the mock. Bad key or no credits (HTTP 429 `insufficient_quota`): never retried, provider calls pause for 5 minutes, agents continue on the deterministic fallback, and `GET /api/llm/status` plus a Control Center banner say what to fix |
 | **Telemetry spans** `core/harness/telemetry.py` | contextvars nesting; batched exporter; every connection to `traces.duckdb` goes through one serialised, retrying `traces_connection()`; OTLP/JSON export | A flush and a dashboard read can no longer collide; a failed final flush spills to a spool file that the next run ingests (see the postmortem) |
 | **Stats engine** `agents/liveops_copilot/stats_engine.py` | Fleiss / CUPED-adjusted power, CUPED, mSPRT | Always-valid inference: peeking cannot inflate false positives |
 | **Copilot** `agents/liveops_copilot/agent.py` | Robust-z scan → power → factory variant → flag → daily replayed peeks | 20% cap enforced 3×; human gate; automatic rollback when the guardrail CI falls below 0 |
@@ -182,11 +182,12 @@ These are stated plainly, because an evaluator will find them anyway:
 - **Golden labels** come from construction, not from people. Drop `data/golden_levels_human.csv` in
   place to re-score against human labels.
 - **No successful real-model completion has been observed.** The provider path is wired and tested at the HTTP
-  boundary (URL, auth header, payload, tool round-trip for both Anthropic and OpenAI), and a live request to
-  `api.openai.com` was made through the harness, but that account had no credits (HTTP 429 `insufficient_quota`),
-  so the run was recorded as an error and the pipeline finished on the heuristic. Prompt quality and real-model
-  latency are therefore unmeasured. Note that with a key set, the Soma intake server sends customer message text to
-  the provider for the optional extraction pass; set `LLM_PROVIDER=mock` to keep it local.
+  boundary (URL, auth header, payload, tool round-trip for both Anthropic and OpenAI), and live requests to
+  `api.openai.com` were made through the harness and the running Control Center. That account had no credits, so
+  every answer was HTTP 429 `insufficient_quota`: the jobs finished on the heuristic, the `llm.call` spans carry
+  `error_class=quota_exhausted`, and the banner appeared. Prompt quality and real-model latency are unmeasured.
+  With a key set, the Soma intake server sends customer message text to the provider for the optional extraction
+  pass; set `LLM_PROVIDER=mock` to keep it local.
 - **The mSPRT mixing variance τ** is set from the observed control mean (τ = MDE × control mean) rather than fixed
   before the experiment. The false-positive rates quoted above were measured with a fixed τ; the data-dependent
   choice has not been measured separately, and a pre-registered τ would be cleaner.
@@ -198,7 +199,7 @@ These are stated plainly, because an evaluator will find them anyway:
 | Command | What it does |
 |---|---|
 | `make run` | Server + Control Center on :8000 |
-| `make test` | 148 tests: the 4 phases plus the audit suites (math, guardrail proofs, integration), about 3 minutes |
+| `make test` | 152 tests: the 4 phases plus the audit suites (math, guardrail proofs, integration). About 45 s on 4 cores (one worker per core, one test file per worker; `pytest -n0` runs them serially in about 2 minutes) |
 | `make check` | Tests + guardrail conformance (the CI gate) |
 | `make faults` | The five fault drills from a terminal |
 | `make phase2` / `make phase3` | Scorecards for Projects 1–2 and Projects 3 and 5 (server stopped) |

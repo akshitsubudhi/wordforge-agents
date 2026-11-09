@@ -12,13 +12,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "pytest-xdist>=3.5"]
 # Only needed to REBUILD data/wordlist.tsv. Install with uv (pip was seen to hang on it).
 wordlist = ["wordfreq>=3.1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# one worker per core; a test FILE stays on one worker because its module fixtures own a temp data dir
+addopts = "-q -n auto --dist loadfile"
 
 [tool.setuptools]
 packages = []

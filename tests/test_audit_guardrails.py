@@ -58,13 +58,11 @@ def lex():
 
 
 @pytest.fixture(scope="module")
-def data_dir(tmp_path_factory, lex):
+def data_dir(tmp_path_factory, seeded_copy):
     d = tmp_path_factory.mktemp("audit_guardrails")
     prev = os.environ.get("LIVEOPS_DATA_DIR")
     os.environ["LIVEOPS_DATA_DIR"] = str(d)
-    con = open_rw(d / "telemetry.duckdb")
-    seed_database(con, n_players=400, seed=3, lex=lex)
-    con.close()
+    seeded_copy(d, n_players=400, seed=3)
     yield d
     if prev is None:
         os.environ.pop("LIVEOPS_DATA_DIR", None)

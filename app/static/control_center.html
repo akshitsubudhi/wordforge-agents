@@ -105,6 +105,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .trace { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; cursor: pointer; text-decoration: underline dotted; color: var(--accent); }
 .fault-card .head { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; }
 .fault-card .n { font-size: 12px; color: var(--text-muted); font-weight: 700; }
+.llm-banner { margin-bottom: 16px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--warning); background: var(--warning-bg); font-size: 13px; line-height: 1.45; }
+.llm-banner.crit { border-color: var(--critical); background: var(--critical-bg); }
+.llm-banner b { display: block; margin-bottom: 2px; } .llm-banner code { font-size: 12px; }
 .result { margin-top: 10px; padding: 10px; border-radius: 8px; font-weight: 600; }
 .result.good { background: var(--good-bg); } .result.bad { background: var(--critical-bg); }
 .chart { position: relative; margin-top: 8px; }
@@ -164,6 +167,7 @@ section { display: none; } section.show { display: block; }
 </nav>
 <main>
 <div class="approval-bar" id="approvalBar" role="alert"></div>
+<div class="llm-banner" id="llmBanner" role="status" hidden></div>
 
 <!-- ======================= OVERVIEW ======================= -->
 <section id="s-overview" class="show">
@@ -341,6 +345,7 @@ async function runJob(kind, params, { stepsEl, onStep, onDone, btn } = {}) {
         onStep && onStep(s);
       }
       since = j.next;
+      showLLM(j.llm);
       if (j.status === "done" || j.status === "error") { hideApproval(); onDone && onDone(j.result, j); if (j.error) toast(j.error); break; }
     }
   } catch (e) { toast(e.message); }
@@ -438,10 +443,19 @@ const BLOCKS = [
   ["Intake workflow", "agents/soma_intake/workflow.py", "event history replay; exactly-once activities; conf < 0.80 → human"],
   ["Carrier portal bot", "agents/soma_intake/portal_automation.py", "label-mapped filling; idempotent client_ref; field errors → human"],
 ];
+function showLLM(st) {
+  const el = $("#llmBanner");
+  if (!st || st.mode !== "live" || st.ok) { el.hidden = true; return; }
+  el.className = "llm-banner" + (st.state === "quota_exhausted" || st.state === "auth_failed" ? " crit" : "");
+  el.innerHTML = `<b>LLM provider (${esc(st.provider)} · ${esc(st.model)}): ${esc(st.message)}</b>${esc(st.action)}` +
+    (st.last_error ? `<div class="small muted" style="margin-top:4px"><code>${esc(st.last_error.slice(0, 220))}</code></div>` : "");
+  el.hidden = false;
+}
 async function loadOverview() {
   $("#blocks").innerHTML = tbl(["Block", "File", "Mitigation hook"], BLOCKS.map((b) => [esc(b[0]), `<code>${esc(b[1])}</code>`, esc(b[2])]));
   try {
     const o = await api("/api/cc/overview");
+    showLLM(o.llm);
     const c = o.counts;
     $("#counters").innerHTML = [["events", c.events], ["live player events", c.live_events], ["active levels", c.active_levels], ["factory levels live", c.factory_levels],
       ["active experiments", c.active_flags], ["approval decisions", c.approvals], ["traces", o.traces.traces], ["spans", o.traces.spans]]

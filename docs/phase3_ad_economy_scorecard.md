@@ -18,7 +18,7 @@
 | LinTS beats uniform | PASS |  |
 | LinTS >= 90% of oracle | PASS |  |
 
-_15.2s, seeded and deterministic._
+_16.5s, seeded and deterministic._
 
 ## 1. Bid shading  beta(v) = v - integral_r^v F(x)^(N-1) dx / F(v)^(N-1)
 

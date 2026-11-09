@@ -58,13 +58,11 @@ def solver(lex):
 
 
 @pytest.fixture(scope="module")
-def p2_dir(tmp_path_factory, lex):
+def p2_dir(tmp_path_factory, seeded_copy):
     d = tmp_path_factory.mktemp("phase2_data")
     prev = os.environ.get("LIVEOPS_DATA_DIR")
     os.environ["LIVEOPS_DATA_DIR"] = str(d)
-    con = open_rw(d / "telemetry.duckdb")
-    seed_database(con, n_players=400, seed=3, lex=lex)
-    con.close()
+    seeded_copy(d, n_players=400, seed=3)
     yield d
     if prev is None:
         os.environ.pop("LIVEOPS_DATA_DIR", None)

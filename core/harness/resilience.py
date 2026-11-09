@@ -35,6 +35,7 @@ Failure modes & 1-step mitigation
 """
 from __future__ import annotations
 
+import contextvars
 import os
 import random
 import resource
@@ -224,7 +225,10 @@ def call_with_timeout(fn: Callable[[], T], timeout_s: float) -> T:
         except BaseException as e:  # propagate to caller
             box["error"] = e
 
-    t = threading.Thread(target=target, daemon=True, name="tool-call")
+    # run in a COPY of the caller's context: spans opened inside the tool (e.g. its llm.call) must stay children of
+    # the tool.call span instead of starting orphan traces on the watchdog thread
+    ctx = contextvars.copy_context()
+    t = threading.Thread(target=lambda: ctx.run(target), daemon=True, name="tool-call")
     t.start()
     t.join(timeout_s)
     if t.is_alive():

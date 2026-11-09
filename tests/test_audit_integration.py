@@ -63,13 +63,11 @@ def lex():
 
 
 @pytest.fixture(scope="module")
-def data_dir(tmp_path_factory, lex):
+def data_dir(tmp_path_factory, seeded_copy):
     d = tmp_path_factory.mktemp("audit_integration")
     prev = os.environ.get("LIVEOPS_DATA_DIR")
     os.environ["LIVEOPS_DATA_DIR"] = str(d)
-    con = open_rw(d / "telemetry.duckdb")
-    seed_database(con, n_players=400, seed=3, lex=lex)
-    con.close()
+    seeded_copy(d, n_players=400, seed=3)
     yield d
     if prev is None:
         os.environ.pop("LIVEOPS_DATA_DIR", None)
@@ -278,6 +276,83 @@ def test_bad_api_key_ends_the_run_with_an_error_status_not_a_crash(tmp_path, mon
     monkeypatch.setattr(llm_mod, "_http_post", FakeProvider([TransientLLMError("HTTP 500")]))
     res = echo_runner(tmp_path, AnthropicClient("k")).run("hello")
     assert res.status == "error" and "TransientLLMError" in res.stop_reason
+
+
+QUOTA_BODY = ('{"error": {"message": "You have no credits remaining. Add credits to continue using the API.", '
+              '"type": "insufficient_quota", "code": "insufficient_quota"}}')
+
+
+def _provider_returns(monkeypatch, status: int, body: str) -> list:
+    """Replace only the socket: the real _http_post classification code runs on a real httpx.Response."""
+    import httpx
+
+    sent: list = []
+
+    def post(url, **kw):
+        sent.append(url)
+        return httpx.Response(status, text=body)
+
+    monkeypatch.setattr(httpx, "post", post)
+    return sent
+
+
+def test_quota_429_is_traced_not_retried_and_surfaced_as_an_actionable_status(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    sent = _provider_returns(monkeypatch, 429, QUOTA_BODY)
+    assert llm_mod.llm_status()["state"] == "ok" and "no call made yet" in llm_mod.llm_status()["message"]
+    mem = InMemoryExporter()
+    llm = get_llm()
+    res = echo_runner(tmp_path, llm, mem).run("hello")
+    assert res.status == "error" and "QuotaExhaustedLLMError" in res.stop_reason        # recorded, not raised
+    assert len(sent) == 1                                                               # insufficient_quota is NOT retried
+    span = next(s for s in mem.spans if s.name == "llm.call")
+    assert span.status == "ERROR" and "insufficient_quota" in span.status_message
+    assert span.attributes["error_class"] == "quota_exhausted" and span.attributes["retryable"] is False
+    assert [e["name"] for e in span.events] == ["llm.error"]
+    assert [s.status for s in mem.spans if s.name == "agent.run"] == ["ERROR"]          # the trace shows where it stopped
+    st = llm_mod.llm_status()
+    assert st == {**st, "mode": "live", "provider": "openai", "state": "quota_exhausted", "ok": False}
+    assert "out of credits" in st["message"] and "LLM_PROVIDER=mock" in st["action"] and "insufficient_quota" in st["last_error"]
+    # the provider is not hammered: the next calls fail fast with the same typed error and NO HTTP request
+    with pytest.raises(llm_mod.QuotaExhaustedLLMError):
+        guarded_completion(llm, [Message("user", "x")], budget=BudgetGuard(), tracer=Tracer(mem))
+    assert len(sent) == 1 and [e["name"] for e in mem.spans[-1].events] == ["llm.provider_blocked", "llm.error"]
+    # breaker noise afterwards must not hide the real cause
+    llm_mod.HEALTH.record_error(TransientLLMError("circuit open"))
+    assert llm_mod.llm_status()["state"] == "quota_exhausted" and "insufficient_quota" in llm_mod.llm_status()["last_error"]
+    # after the pause the provider is probed again; a real answer clears the status
+    llm.blocked_until = 0.0
+    monkeypatch.setattr(llm_mod, "_http_post", FakeProvider([openai_text("back")]))
+    assert guarded_completion(llm, [Message("user", "x")], budget=BudgetGuard(), tracer=Tracer(mem)).text == "back"
+    assert llm_mod.llm_status()["ok"] and llm_mod.llm_status()["state"] == "ok"
+
+
+def test_rate_limit_429_is_retried_with_retry_and_fallback_events_on_the_span(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    sent = _provider_returns(monkeypatch, 429, '{"type": "error", "error": {"type": "rate_limit_error", "message": "slow down"}}')
+    mem = InMemoryExporter()
+    llm = get_llm()
+    llm.sleep = lambda s: None
+    res = echo_runner(tmp_path, llm, mem).run("hello")
+    assert res.status == "completed" and len(sent) == 3                                 # 3 attempts, then the mock answers
+    span = next(s for s in mem.spans if s.name == "llm.call")
+    assert [e["name"] for e in span.events] == ["llm.retry", "llm.retry", "llm.fallback"]
+    assert span.events[0]["attributes"]["attempt"] == 1 and "429" in span.events[0]["attributes"]["error"]
+    assert span.status == "OK" and span.attributes["fallback"] is True and span.attributes["served_by"] == "mock-compliant"
+    st = llm_mod.llm_status()
+    assert st["state"] == "degraded" and not st["ok"] and "No action needed" in st["action"]
+
+
+def test_bad_key_401_and_mock_mode_statuses(tmp_path, monkeypatch):
+    assert llm_mod.llm_status() == {**llm_mod.llm_status(), "mode": "mock", "state": "mock", "ok": True, "action": ""}
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-wrong")
+    sent = _provider_returns(monkeypatch, 401, '{"error": {"type": "authentication_error", "message": "invalid x-api-key"}}')
+    res = echo_runner(tmp_path, get_llm()).run("hello")
+    assert res.status == "error" and len(sent) == 1
+    st = llm_mod.llm_status()
+    assert st["state"] == "auth_failed" and "ANTHROPIC_API_KEY" in st["action"] and st["provider"] == "anthropic"
+    monkeypatch.setenv("LLM_PROVIDER", "mock")
+    assert llm_mod.llm_status()["mode"] == "mock" and "LLM_PROVIDER=mock" in llm_mod.llm_status()["message"]
 
 
 # ============================================================================ 4. agents use the provider via the harness
@@ -525,14 +600,16 @@ def test_game_agents_and_trace_reads_share_the_running_server_without_lock_error
     threads = [threading.Thread(target=player, args=(i,)) for i in range(8)] + [threading.Thread(target=poller) for _ in range(3)]
     for t in threads:
         t.start()
-    results = {k: _wait_job(client, k, p) for k, p in (
-        ("fault_hallucinated_level", {}), ("fault_network_dark", {}), ("fault_peeking", {}), ("fault_prompt_injection", {}),
-        ("fault_runaway_cost", {}), ("factory_push", {"candidates": 12}), ("copilot_scan", {}), ("ad_floor", {}))}
-    for t in threads[:8]:
-        t.join()
-    stop.set()
-    for t in threads[8:]:
-        t.join()
+    try:
+        results = {k: _wait_job(client, k, p) for k, p in (
+            ("fault_hallucinated_level", {}), ("fault_network_dark", {}), ("fault_peeking", {}), ("fault_prompt_injection", {}),
+            ("fault_runaway_cost", {}), ("factory_push", {"candidates": 12}), ("copilot_scan", {}), ("ad_floor", {}))}
+        for t in threads[:8]:
+            t.join()
+    finally:   # ALWAYS stop the pollers: a failure above must not leave threads hammering the server during teardown
+        stop.set()
+        for t in threads:
+            t.join(timeout=60)
     assert bad == []
     assert {k: v["status"] for k, v in results.items()} == {k: "done" for k in results}
     assert all(results[k]["result"]["blocked"] for k in results if k.startswith("fault_"))     # 5/5 mitigated in-server
@@ -540,6 +617,36 @@ def test_game_agents_and_trace_reads_share_the_running_server_without_lock_error
     detail = client.get(f"/api/cc/traces/{tid}")
     assert detail.status_code == 200 and any(s["name"] == "llm.call" for s in detail.json()["spans"])
     assert client.get("/api/cc/traces/" + "0" * 32).status_code == 404
+
+
+def test_control_center_with_an_exhausted_provider_shows_a_banner_not_a_500(client, monkeypatch):
+    """HTTP 429 insufficient_quota from the live provider: jobs finish on the fallback, every route answers 200,
+    /api/llm/status and the overview carry an actionable message, and the job log says what happened."""
+    assert client.get("/api/llm/status").json()["mode"] == "mock"
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    sent = _provider_returns(monkeypatch, 429, QUOTA_BODY)
+    cc = client.app.state.cc
+    old_factory, cc["factory"] = cc["factory"], None          # the server builds its factory from the environment
+    try:
+        job = _wait_job(client, "factory_push", {"candidates": 8})
+        assert job["status"] == "done" and job["error"] is None and job["result"]["published"]   # shipped on the heuristic
+        warn = [s for s in job["steps"] if s.get("llm")]
+        assert len(warn) == 1 and "out of credits" in warn[0]["title"] and "LLM_PROVIDER=mock" in warn[0]["detail"]
+        assert 1 <= len(sent) <= 2                             # generator (+ at most one critic probe), then paused
+        for path in ("/api/llm/status", "/api/cc/overview", "/api/cc/metrics", "/api/cc/traces/recent", "/api/health", "/control-center"):
+            assert client.get(path).status_code == 200, path
+        st = client.get("/api/llm/status").json()
+        assert st["state"] == "quota_exhausted" and st["ok"] is False and st["provider"] == "openai"
+        assert client.get("/api/cc/overview").json()["llm"]["state"] == "quota_exhausted"
+        assert job["llm"]["state"] == "quota_exhausted"        # the polled job payload drives the banner
+        html = client.get("/control-center").text
+        assert 'id="llmBanner"' in html and "showLLM(o.llm)" in html and "showLLM(j.llm)" in html
+        tid = job["result"]["trace_id"]
+        spans = client.get(f"/api/cc/traces/{tid}").json()["spans"]
+        assert any(s["name"] == "llm.call" and s["status"] == "ERROR" and "insufficient_quota" in (s["status_message"] or "")
+                   and any(e["name"] == "llm.error" for e in s["events"]) for s in spans)
+    finally:
+        cc["factory"] = old_factory
 
 
 # ============================================================================ 6. one schema, end to end
