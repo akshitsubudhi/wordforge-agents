@@ -7,3 +7,6 @@ data/*.duckdb.wal
 data/.seed_*
 data/reports/
 data/cookie_cats.csv
+data/*.sqlite
+data/*.sqlite-wal
+data/*.sqlite-shm

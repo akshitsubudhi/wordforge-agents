@@ -1,10 +1,10 @@
-# LiveOps Agent Platform - Phase 1
+# LiveOps Agent Platform
 # `make setup run` takes a fresh clone to a playable game. No Docker, no external services.
 PY      ?= .venv/bin/python
 PORT    ?= 8000
 UV      := $(shell command -v uv 2>/dev/null)
 
-.PHONY: help setup seed reseed run stop conformance redteam metrics test check clean wordlist phase2 copilot-scan
+.PHONY: help setup seed reseed run stop conformance redteam metrics test check clean wordlist phase2 copilot-scan phase3 ad-economy soma-eval
 
 help:
 	@echo "make setup        create .venv and install deps (uv if present, else venv+pip)"
@@ -17,6 +17,7 @@ help:
 	@echo "make check        test + conformance (the CI gate)"
 	@echo "make phase2       run Copilot + Level Factory end to end, print the scorecard (server must be stopped)"
 	@echo "make copilot-scan funnel anomaly scan only (read-only workflow)"
+	@echo "make phase3       ad economy scorecard + Soma 50-submission eval (server must be stopped)"
 
 setup:
 ifdef UV
@@ -57,6 +58,14 @@ phase2:
 
 copilot-scan:
 	$(PY) -m agents.liveops_copilot.agent scan
+
+ad-economy:
+	$(PY) scripts/run_ad_economy_sim.py --out docs/phase3_ad_economy_scorecard.md
+
+soma-eval:
+	$(PY) scripts/run_soma_eval.py --out docs/phase3_soma_eval_scorecard.md
+
+phase3: ad-economy soma-eval
 
 check: test conformance
 

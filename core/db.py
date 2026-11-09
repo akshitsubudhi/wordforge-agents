@@ -130,6 +130,24 @@ SCHEMA = [
         retained_d1 BOOLEAN,   -- guardrail (NULL until observable)
         source      VARCHAR    -- live | sim
     )""",
+    """CREATE TABLE IF NOT EXISTS ad_mediation_config (
+        version     INTEGER PRIMARY KEY,
+        created_at  TIMESTAMP,
+        mechanism   VARCHAR,
+        reserve_cpm DOUBLE CHECK (reserve_cpm >= 0 AND reserve_cpm <= 50),
+        disabled    VARCHAR,   -- JSON array of quarantined networks
+        status      VARCHAR,   -- trial | good | rolled_back | superseded
+        parent      INTEGER,
+        reason      VARCHAR
+    )""",
+    """CREATE TABLE IF NOT EXISTS ad_hourly_metrics (
+        run_id VARCHAR, hour INTEGER, network VARCHAR, config_version INTEGER,
+        requests INTEGER, fills INTEGER, revenue_usd DOUBLE, timeouts INTEGER
+    )""",
+    """CREATE TABLE IF NOT EXISTS ua_allocations (
+        run_id VARCHAR, day INTEGER, policy VARCHAR, channel VARCHAR, context VARCHAR,
+        spend_usd DOUBLE, installs INTEGER, d1_ltv_usd DOUBLE
+    )""",
     """CREATE TABLE IF NOT EXISTS agent_audit (
         ts     TIMESTAMP,
         agent  VARCHAR,

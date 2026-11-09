@@ -44,12 +44,22 @@ liveops-agent-platform/
 │   │   ├── stats_engine.py       power (proportions/means, unequal allocation, CUPED-adjusted), CUPED, mSPRT
 │   │   ├── simulator.py          experiment traffic bootstrapped from seeded players
 │   │   └── agent.py              scan → power → candidate → flag (≤20 %, approval) → CUPED+mSPRT → rollback/ship
+│   ├── ad_economy/               ── Project 3 ──
+│   │   ├── auction_sim.py        5-network mediation: waterfall (naive/strategic) vs 1st/2nd-price header bidding, BNE shading
+│   │   └── bandit_agent.py       NIG Thompson floors, EWMA detectors, guarded rollback + quarantine, LinTS UA allocator
+│   ├── soma_intake/              ── Project 5 ──
+│   │   ├── extractor.py          ACORD 125/126 rules, spoken-number normalisation, confidence + provenance, verified-quote LLM pass
+│   │   ├── workflow.py           channel normalisers (email / Twilio SMS / voice), SQLite event store, durable engine, /soma routes
+│   │   ├── portal_automation.py  mock carrier portal (/mock-carrier-portal) + label-driven form filler
+│   │   └── synthetic.py          50-case benchmark (development + held-out phrasing), customer simulator
 │   └── level_factory/            ── Project 2 ──
 │       ├── solver.py             Trie+DFS proof, independent referee re-check, branching factor, Zipf rarity
 │       ├── difficulty_model.py   Poisson-binomial player model, Nelder-Mead calibration on telemetry
 │       └── critic_and_eval.py    LLM/heuristic generator · 4-rubric critic · 100-level golden eval · daily shipper
 ├── scripts/verify_phase2.py      runs both pipelines, prints the Markdown scorecard (docs/phase2_scorecard.md)
-└── tests/test_phase2.py
+├── scripts/run_ad_economy_sim.py Project 3 scorecard (docs/phase3_ad_economy_scorecard.md)
+├── scripts/run_soma_eval.py      Project 5 50-submission eval (docs/phase3_soma_eval_scorecard.md)
+└── tests/test_phase2.py, tests/test_phase3.py
 ```
 
 ## System diagram
@@ -234,3 +244,82 @@ flowchart LR
   human labels instead.
 - **Simulated traffic:** experiment traffic is simulated (bootstrapped from seeded players). Live
   exposures from the game use the same table and the same evaluator.
+
+
+## Phase 3: Ad Economy (Project 3) and Soma Intake (Project 5)
+
+```mermaid
+flowchart LR
+    subgraph Ads["Project 3: Ad economy"]
+        SIM[MediationSimulator<br/>5 networks · log-normal demand] --> HB[header bidding<br/>2nd price / BNE-shaded 1st price]
+        SIM --> WF[waterfall<br/>naive / strategic]
+        TS[NIG Thompson sampling<br/>reserve floor] --> CFG[(ad_mediation_config<br/>versioned · LKG)]
+        OBS[observe_hour] --> DET[EWMA detectors<br/>total + per network]
+        DET -->|one network dark| Q[quarantine + half-open probe]
+        DET -->|total drop after a recent change| RB[guarded rollback to LKG]
+        DET -->|total drop, no recent change| ESC[escalate to human]
+        LTV[(telemetry.duckdb<br/>measured D1 LTV)] --> UA[LinTS UA allocator]
+        UA -->|≤ $5k per call · ≤ 50% per channel| ALLOC[(ua_allocations)]
+    end
+    subgraph Soma["Project 5: Soma intake"]
+        E[e-mail RFC 5322] --> N[normalisers]
+        S[Twilio SMS + HMAC] --> N
+        V[voice transcript + ASR conf] --> N
+        N --> ES[(SQLite event history<br/>idempotent append)]
+        ES --> F[fold → CaseState]
+        F --> X[extractor<br/>confidence + provenance]
+        X --> D{decide}
+        D -->|gaps / conflicts| FU[send_followup<br/>templated, no echo]
+        D -->|hazard / conf < 0.8 after 3| HO[human handoff]
+        D -->|ready| PF[fill_portal<br/>requires approval]
+        PF --> P[mock carrier portal<br/>obfuscated names · CSRF · idempotent]
+    end
+```
+
+### Phase 3 failure-mitigation matrix
+
+| Block | Key mechanism | Failure mode | Automatic mitigation (operator effort) |
+|---|---|---|---|
+| `ad_economy/auction_sim.py` | Numeric BNE shading on a grid (validated against the closed form and revenue equivalence); pooled opponent CDF for heterogeneous networks | Dark network hangs every auction to timeout | Modelled explicitly, so the controller's quarantine has a measurable payoff (none) |
+| `ad_economy/bandit_agent.py`: floors | NIG Thompson sampling over revenue per request | Exploring bad floors costs revenue | Regret is 8% of uniform exploration; floor step guard ±$12 (none) |
+| `ad_economy/bandit_agent.py`: ops | Confirmed EWMA alarms; frozen baseline; re-baseline after every config change | Bad config push; dead network; market-wide drop; false quarantine after our own change | Rollback to last-known-good only after a recent change, with a cooldown; quarantine only a single-network zero-fill or share drop while the total is healthy; otherwise escalate (none) |
+| `ad_economy/bandit_agent.py`: UA | LinTS with daily posterior refresh | Over-concentration; oversized commitments | ≤ 50% of the day per channel; L1 currency cap of $5k per `allocate_ua_budget` call (none) |
+| `soma_intake/workflow.py` | Event history; activity started/completed; idempotency keys; pure `decide()` | Process crash; webhook redelivery; forged SMS | `recover()` re-runs a half-done activity with the same id, and downstream de-duplicates it; message-id de-dup; HMAC check returns 403 (none) |
+| `soma_intake/extractor.py` | Rule × channel × ASR × hedge confidence; noisy-OR; correction cues | Vague, conflicting or unseen phrasing | Below 0.80 → follow-up (max 3) → human handoff with reasons and citations (reviewer) |
+| `soma_intake/portal_automation.py` | Label-driven mapping; per-load HMAC field names; client_ref idempotency | Portal relabels fields; duplicate filing; rejected values | Fuzzy label map; same submission id on retry; field errors route the case to a human (reviewer) |
+
+### Measured results
+
+From `make phase3`. Full reports: [ad economy](phase3_ad_economy_scorecard.md),
+[Soma eval](phase3_soma_eval_scorecard.md).
+
+| Check | Result |
+|---|---|
+| BNE shading vs closed form (U[0,1], N=5) | Max error 4×10⁻⁷ |
+| Revenue equivalence (log-normal, N=5, reserve $4) | 1st-price shaded $10.66 vs 2nd-price $10.67 eCPM (z = −1.5) |
+| Header bidding vs strategic waterfall | +31.4% eCPM; 4.5× lower latency; 100% vs 77% allocative efficiency |
+| Thompson sampling, reserve floor | Finds the oracle floor ($6); regret $3.16 vs $38.36 for uniform. Floors $0–6 are within 0.3% of each other. |
+| 72h guarded operations | Bad floor rolled back in 1h; dark network quarantined in the same hour and restored after recovery; market drop escalated; revenue +37% vs unguarded |
+| UA LinTS (60 days, $20k/day) | ROAS +15% vs uniform; 98% of the oracle |
+| Soma, development phrasing (50 cases) | Extraction F1 99.8%; portal fill 38/38; 5.1 turns; handoff precision 12/12, recall 12/12; 150 restarts; 6/6 crashes exactly-once |
+| Soma, **held-out phrasing** (50 cases) | Extraction F1 91.7%; **portal fill 8/38**; handoff recall 12/12; handoff precision 12/37 |
+
+**Read the Soma numbers carefully:**
+
+- **Development phrasing:** the 99.8% is measured on wording drawn from the same templates
+  the rules were written against. It shows the pipeline works end to end, not that it generalises.
+- **Held-out phrasing:** this run uses wording never seen while writing the rules. The confidence
+  gate failed safe 25 times (sent to a human instead of submitting) and caught every high-risk case.
+  It failed **unsafely** 5 times: a wrong full-time headcount reached the portal at confidence ≥ 0.80.
+- **Root causes, deliberately left unfixed so the held-out score stays honest:**
+  1. When one reply answers several questions, context-based attribution leaks. "$1M per claim"
+     gets attributed to revenue as well as to limits.
+  2. The narrow rule vocabulary misses phrasings like "per claim", "zero losses" and
+     "N people full time".
+  3. Hazard detection relies on a keyword gazetteer. Two held-out high-risk cases were handed off
+     for low confidence rather than for the hazard itself.
+- **Next step:** enable the verified-quote LLM extractor and build a *fresh* held-out set to
+  measure it.
+
+- **Ad economy assumptions:** UA CPI levels and channel-quality multipliers are stated
+  assumptions. Only D1 LTV per geo tier and platform is measured from telemetry.

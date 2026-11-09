@@ -5,7 +5,8 @@ BLOCK: FastAPI Application Entry Point (game + telemetry + harness endpoints)
 Role & contracts
   `uvicorn app.main:app` - serves the playable game (/game), the game API
   (/api/game/*), telemetry read APIs (/api/telemetry/*), harness metrics and
-  the conformance suite (/api/harness/*), and admin reseed. Phase 4's Control
+  the conformance suite (/api/harness/*), admin reseed, the Soma intake
+  webhooks (/soma/*) and the mock carrier portal (/mock-carrier-portal). Phase 4's Control
   Center mounts onto this same app.
 
 Key engineering mechanism
@@ -32,6 +33,8 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, RedirectResponse
 
+from agents.soma_intake.portal_automation import portal_router
+from agents.soma_intake.workflow import router as soma_router
 from app.game_api import GameState, router as game_router
 from core.config import get_settings
 from core.db import DatabaseLockedError, TelemetryDB
@@ -81,6 +84,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="LiveOps Agent Platform", version="0.1.0", lifespan=lifespan)
 app.include_router(game_router)
+app.include_router(portal_router)   # Phase 3: mock carrier portal (/mock-carrier-portal)
+app.include_router(soma_router)     # Phase 3: Soma intake webhooks + case API (/soma/*)
 
 
 @app.get("/", include_in_schema=False)
