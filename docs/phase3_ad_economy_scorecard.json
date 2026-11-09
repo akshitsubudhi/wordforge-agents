@@ -1,0 +1,101 @@
+{
+  "hb_vs_strategic_waterfall_ecpm_uplift": 0.31417498625162144,
+  "latency_ratio": 4.527911171702286,
+  "shading_max_err": 4.166656250026435e-07,
+  "revenue_equivalence": {
+    "bidders": 5,
+    "reserve": 4.0,
+    "auctions": 100000,
+    "first_price_shaded_cpm": 10.658,
+    "second_price_cpm": 10.6696,
+    "difference": -0.0116,
+    "se": 0.0077,
+    "z": -1.51
+  },
+  "ts_oracle_floor": 6,
+  "ts_floor": 6,
+  "ts_regret": 3.161,
+  "uniform_regret": 38.361,
+  "ts_vs_default_floor_lift": 0.004555357496533796,
+  "guarded_revenue": 1981.46,
+  "unguarded_revenue": 1441.66,
+  "guarded_arpdau_lift": 0.3744294771305301,
+  "ua_roas": {
+    "lints": 0.03861,
+    "uniform": 0.03347,
+    "oracle": 0.03949
+  },
+  "ua_lift_vs_uniform": 0.15357036151777703,
+  "checks": [
+    {
+      "name": "shading matches closed form",
+      "ok": true,
+      "detail": "4.2e-07"
+    },
+    {
+      "name": "revenue equivalence holds (|z| < 3)",
+      "ok": true,
+      "detail": "z=-1.51"
+    },
+    {
+      "name": "header bidding beats strategic waterfall on eCPM",
+      "ok": true,
+      "detail": "+31.4%"
+    },
+    {
+      "name": "header bidding latency lower than waterfall",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "1st-price shaded ~= 2nd price (within 3%)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "TS finds the oracle floor",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "TS regret < 25% of uniform",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "bad floor rolled back within 2h",
+      "ok": true,
+      "detail": "h35"
+    },
+    {
+      "name": "dark network quarantined within 1h",
+      "ok": true,
+      "detail": "h44"
+    },
+    {
+      "name": "market drop escalated, not rolled back",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no false quarantines",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "guarded revenue > unguarded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "LinTS beats uniform",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "LinTS >= 90% of oracle",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

@@ -35,6 +35,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 
 from agents.soma_intake.portal_automation import portal_router
 from agents.soma_intake.workflow import router as soma_router
+from app.dashboard import router as cc_router
 from app.game_api import GameState, router as game_router
 from core.config import get_settings
 from core.db import DatabaseLockedError, TelemetryDB
@@ -78,6 +79,8 @@ async def lifespan(app: FastAPI):
         print(f"seeded {r['events']:,} events in {r['seconds']}s ({r['provenance']})", flush=True)
     app.state.db = db
     app.state.game = GameState(db, load_lexicon())
+    if hasattr(app.state, "cc"):   # Control Center handlers bind to the DB: never reuse ones from a previous lifespan
+        del app.state.cc
     yield
     db.close()
 
@@ -86,11 +89,12 @@ app = FastAPI(title="LiveOps Agent Platform", version="0.1.0", lifespan=lifespan
 app.include_router(game_router)
 app.include_router(portal_router)   # Phase 3: mock carrier portal (/mock-carrier-portal)
 app.include_router(soma_router)     # Phase 3: Soma intake webhooks + case API (/soma/*)
+app.include_router(cc_router)       # Phase 4: Evaluator Control Center (/control-center, /api/cc/*)
 
 
 @app.get("/", include_in_schema=False)
 def root():
-    return RedirectResponse("/game")
+    return RedirectResponse("/control-center")
 
 
 @app.get("/game", include_in_schema=False)

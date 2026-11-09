@@ -1,0 +1,1399 @@
+{
+  "headline": [
+    {
+      "key": "eval_agreement",
+      "label": "Critic \u2194 golden agreement",
+      "value": "96.0%",
+      "caption": "Cohen's \u03ba 0.92, defect recall 1.0; 100 levels, labels by construction"
+    },
+    {
+      "key": "redteam_block",
+      "label": "Red-team block rate",
+      "value": "100% (25/25)",
+      "caption": "0/10 false alarms; best single layer alone blocks 9/25"
+    },
+    {
+      "key": "p95_latency",
+      "label": "p95 agent task latency",
+      "value": "35 ms",
+      "caption": "1,891 traced tasks; tool-call p95 29.3 ms (traces.duckdb)"
+    },
+    {
+      "key": "cost_per_task",
+      "label": "LLM USD cost / task",
+      "value": "$0.00033",
+      "caption": "mean over 368 LLM-driven runs at mock pricing; hard cap $0.25/run; workflows spend $0"
+    },
+    {
+      "key": "cuped",
+      "label": "CUPED variance reduction",
+      "value": "7.1%",
+      "caption": "\u03c1=0.26 on the seeded cohort (8,429\u21927,774 users); \u2248\u03c1\u00b2 as theory says"
+    },
+    {
+      "key": "d1_lift",
+      "label": "D1 retention: guardrail catch",
+      "value": "-4.7pp caught",
+      "caption": "harmful variant rolled back on day 2; shipped variant D1 +0.9pp (always-valid CI spans 0: not claimed)"
+    },
+    {
+      "key": "arpdau",
+      "label": "ARPDAU lift: guarded bandit ops",
+      "value": "+37.4%",
+      "caption": "72h incident timeline vs unguarded; TS floor alone +0.5% vs $2 default; UA ROAS +15.4%"
+    },
+    {
+      "key": "soma_f1",
+      "label": "Soma ACORD extraction F1",
+      "value": "99.8%",
+      "caption": "held-out phrasing 91.7% (portal fill 8/38); handoff recall 100%"
+    }
+  ],
+  "conformance": {
+    "all_on": {
+      "A": 8,
+      "B": 9,
+      "C": 8,
+      "blocked": 25,
+      "false_alarms": 0,
+      "probes_blocked": 2
+    },
+    "L1_only": {
+      "A": 8,
+      "B": 0,
+      "C": 0,
+      "blocked": 8,
+      "false_alarms": 0,
+      "probes_blocked": 2
+    },
+    "L2_only": {
+      "A": 0,
+      "B": 9,
+      "C": 0,
+      "blocked": 9,
+      "false_alarms": 0,
+      "probes_blocked": 2
+    },
+    "L3_only": {
+      "A": 1,
+      "B": 0,
+      "C": 8,
+      "blocked": 9,
+      "false_alarms": 0,
+      "probes_blocked": 2
+    },
+    "none": {
+      "A": 0,
+      "B": 0,
+      "C": 0,
+      "blocked": 0,
+      "false_alarms": 0,
+      "probes_blocked": 2
+    }
+  },
+  "traces": {
+    "roots": [
+      {
+        "name": "workflow.run",
+        "n": 1523,
+        "p50_ms": 0.38,
+        "p95_ms": 36.58,
+        "success": 1.0
+      },
+      {
+        "name": "agent.run",
+        "n": 368,
+        "p50_ms": 0.99,
+        "p95_ms": 3.39,
+        "success": 1.0
+      }
+    ],
+    "tool_calls": 2622,
+    "tool_p95_ms": 29.31,
+    "tasks": 1891,
+    "task_p95_ms": 34.88,
+    "llm_tasks": 368,
+    "llm_cost_per_task": 0.0003270370923913044,
+    "llm_cost_max": 0.0007507499999999999
+  },
+  "level_taste": {
+    "levels": [
+      {
+        "level": 1,
+        "fail": 0.04993252361673414,
+        "pred": 0.07,
+        "ratio": 0.17647058823529413,
+        "sec_per_word": 20.0,
+        "words": 34
+      },
+      {
+        "level": 2,
+        "fail": 0.07590467784642542,
+        "pred": 0.1068,
+        "ratio": 0.22580645161290322,
+        "sec_per_word": 17.142857142857142,
+        "words": 31
+      },
+      {
+        "level": 3,
+        "fail": 0.1179701230228471,
+        "pred": 0.1459,
+        "ratio": 0.27586206896551724,
+        "sec_per_word": 15.0,
+        "words": 29
+      },
+      {
+        "level": 4,
+        "fail": 0.15669451343418378,
+        "pred": 0.2013,
+        "ratio": 0.375,
+        "sec_per_word": 12.222222222222221,
+        "words": 24
+      },
+      {
+        "level": 5,
+        "fail": 0.1772582841579664,
+        "pred": 0.2263,
+        "ratio": 0.4090909090909091,
+        "sec_per_word": 11.666666666666666,
+        "words": 22
+      },
+      {
+        "level": 6,
+        "fail": 0.22928051001821492,
+        "pred": 0.2599,
+        "ratio": 0.45,
+        "sec_per_word": 11.11111111111111,
+        "words": 20
+      },
+      {
+        "level": 7,
+        "fail": 0.6271344303011487,
+        "pred": 0.5838,
+        "ratio": 0.6363636363636364,
+        "sec_per_word": 10.714285714285714,
+        "words": 11
+      },
+      {
+        "level": 8,
+        "fail": 0.25100603621730383,
+        "pred": 0.1445,
+        "ratio": 0.3,
+        "sec_per_word": 10.0,
+        "words": 40
+      },
+      {
+        "level": 9,
+        "fail": 0.2740276035131744,
+        "pred": 0.1672,
+        "ratio": 0.3157894736842105,
+        "sec_per_word": 10.0,
+        "words": 38
+      },
+      {
+        "level": 10,
+        "fail": 0.2948227492986483,
+        "pred": 0.2057,
+        "ratio": 0.3333333333333333,
+        "sec_per_word": 9.583333333333334,
+        "words": 36
+      },
+      {
+        "level": 11,
+        "fail": 0.3260196179659267,
+        "pred": 0.2123,
+        "ratio": 0.37142857142857144,
+        "sec_per_word": 8.461538461538462,
+        "words": 35
+      },
+      {
+        "level": 12,
+        "fail": 0.34571062740076824,
+        "pred": 0.2275,
+        "ratio": 0.38235294117647056,
+        "sec_per_word": 8.461538461538462,
+        "words": 34
+      }
+    ],
+    "correlation_with_fail_rate": {
+      "target_ratio": 0.846,
+      "seconds_per_required_word": -0.678,
+      "words_on_board": -0.374
+    },
+    "critic_on_fresh_candidates": {
+      "n": 150,
+      "approved": 88,
+      "approval_rate": 0.587,
+      "top_rejection_reasons": [
+        [
+          "lexical_quality: blocklisted words formable on board",
+          37
+        ],
+        [
+          "board_quality: letter spam",
+          9
+        ],
+        [
+          "lexical_quality: 71% of words are 3 letters",
+          3
+        ],
+        [
+          "board_quality: vowel share 62% outside 20-60%",
+          3
+        ],
+        [
+          "lexical_quality: 73% of words are 3 letters",
+          3
+        ],
+        [
+          "board_quality: vowel share 69% outside 20-60%",
+          2
+        ]
+      ],
+      "mean_rubric_score": {
+        "solvability_fairness": 5.0,
+        "difficulty_fit": 4.97,
+        "lexical_quality": 3.75,
+        "board_quality": 4.59
+      }
+    }
+  },
+  "phase2": {
+    "project1": {
+      "anomaly": "Level 7 has a 63% fail rate (median of other levels 23%, robust z 3.7)",
+      "cuped_variance_reduction_pct": 7.06,
+      "cuped_rho": 0.264406,
+      "relative_lift": 0.11490492054707906,
+      "good_d1_delta": 0.0089,
+      "good_d1_ci": [
+        -0.01369,
+        0.03148
+      ],
+      "good_ship_day": 7,
+      "harmful_d1_delta": -0.04684,
+      "harmful_d1_ci": [
+        -0.08865,
+        -0.00503
+      ],
+      "harmful_rollback_day": 2,
+      "n_without_cuped": 8429,
+      "n_with_cuped": 7774,
+      "naive_peeking_fpr": 0.2125,
+      "msprt_fpr": 0.0125
+    },
+    "project2": {
+      "agreement_pct": 96.0,
+      "kappa": 0.92,
+      "recall_reject": 1.0,
+      "precision_reject": 0.92,
+      "calibration_mae": 0.0636,
+      "funnel": {
+        "generated": 170,
+        "solver_verified": 170,
+        "in_difficulty_band": 162,
+        "critic_approved": 80,
+        "shipped": 3
+      },
+      "calibration_points": [
+        {
+          "level_id": 1,
+          "attempts": 4446,
+          "fail_rate": 0.04993252361673414,
+          "predicted": 0.07,
+          "target": 6,
+          "time_limit_s": 120,
+          "words": 34
+        },
+        {
+          "level_id": 2,
+          "attempts": 4532,
+          "fail_rate": 0.07590467784642542,
+          "predicted": 0.1068,
+          "target": 7,
+          "time_limit_s": 120,
+          "words": 31
+        },
+        {
+          "level_id": 3,
+          "attempts": 4552,
+          "fail_rate": 0.1179701230228471,
+          "predicted": 0.1459,
+          "target": 8,
+          "time_limit_s": 120,
+          "words": 29
+        },
+        {
+          "level_id": 4,
+          "attempts": 4429,
+          "fail_rate": 0.15669451343418378,
+          "predicted": 0.2013,
+          "target": 9,
+          "time_limit_s": 110,
+          "words": 24
+        },
+        {
+          "level_id": 5,
+          "attempts": 4406,
+          "fail_rate": 0.1772582841579664,
+          "predicted": 0.2263,
+          "target": 9,
+          "time_limit_s": 105,
+          "words": 22
+        },
+        {
+          "level_id": 6,
+          "attempts": 4392,
+          "fail_rate": 0.22928051001821492,
+          "predicted": 0.2599,
+          "target": 9,
+          "time_limit_s": 100,
+          "words": 20
+        },
+        {
+          "level_id": 7,
+          "attempts": 6442,
+          "fail_rate": 0.6271344303011487,
+          "predicted": 0.5838,
+          "target": 7,
+          "time_limit_s": 75,
+          "words": 11
+        },
+        {
+          "level_id": 8,
+          "attempts": 3976,
+          "fail_rate": 0.25100603621730383,
+          "predicted": 0.1445,
+          "target": 12,
+          "time_limit_s": 120,
+          "words": 40
+        },
+        {
+          "level_id": 9,
+          "attempts": 3985,
+          "fail_rate": 0.2740276035131744,
+          "predicted": 0.1672,
+          "target": 12,
+          "time_limit_s": 120,
+          "words": 38
+        },
+        {
+          "level_id": 10,
+          "attempts": 3921,
+          "fail_rate": 0.2948227492986483,
+          "predicted": 0.2057,
+          "target": 12,
+          "time_limit_s": 115,
+          "words": 36
+        },
+        {
+          "level_id": 11,
+          "attempts": 3874,
+          "fail_rate": 0.3260196179659267,
+          "predicted": 0.2123,
+          "target": 13,
+          "time_limit_s": 110,
+          "words": 35
+        },
+        {
+          "level_id": 12,
+          "attempts": 3905,
+          "fail_rate": 0.34571062740076824,
+          "predicted": 0.2275,
+          "target": 13,
+          "time_limit_s": 110,
+          "words": 34
+        }
+      ]
+    },
+    "checks": [
+      {
+        "name": "P1 scan flags level 7",
+        "ok": true,
+        "detail": "Level 7 has a 63% fail rate (median of other levels 23%, robust z 3.7)"
+      },
+      {
+        "name": "P1 CUPED reduces required sample",
+        "ok": true,
+        "detail": "8429 -> 7774"
+      },
+      {
+        "name": "P1 50% exposure blocked by L1",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "P1 unplanned flag denied at approval gate",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "P1 DB CHECK rejects 50%",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "P1 harmful variant auto-rolled back",
+        "ok": true,
+        "detail": "day 2"
+      },
+      {
+        "name": "P1 good variant shipped after approval",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "P1 CUPED variance reduction > 0",
+        "ok": true,
+        "detail": "7.06%"
+      },
+      {
+        "name": "P1 mSPRT FPR <= alpha under peeking",
+        "ok": true,
+        "detail": "0.0125"
+      },
+      {
+        "name": "P1 naive peeking inflates FPR",
+        "ok": true,
+        "detail": "0.2125"
+      },
+      {
+        "name": "P2 difficulty model calibrated MAE < 0.10",
+        "ok": true,
+        "detail": "0.0636"
+      },
+      {
+        "name": "P2 critic kappa >= 0.6",
+        "ok": true,
+        "detail": "0.92"
+      },
+      {
+        "name": "P2 critic catches >= 95% of injected defects",
+        "ok": true,
+        "detail": "1.0"
+      },
+      {
+        "name": "P2 daily levels shipped",
+        "ok": true,
+        "detail": "3 levels"
+      },
+      {
+        "name": "GAME level 7 now serves the shipped version",
+        "ok": true,
+        "detail": "v3"
+      },
+      {
+        "name": "GAME daily levels in rotation",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "GAME daily level playable",
+        "ok": true,
+        "detail": "EHSD/SRUS/IPTR/ILEV"
+      },
+      {
+        "name": "P2 spiking daily level retired",
+        "ok": true,
+        "detail": ""
+      }
+    ]
+  },
+  "ad_economy": {
+    "hb_vs_strategic_waterfall_ecpm_uplift": 0.31417498625162144,
+    "latency_ratio": 4.527911171702286,
+    "shading_max_err": 4.166656250026435e-07,
+    "revenue_equivalence": {
+      "bidders": 5,
+      "reserve": 4.0,
+      "auctions": 100000,
+      "first_price_shaded_cpm": 10.658,
+      "second_price_cpm": 10.6696,
+      "difference": -0.0116,
+      "se": 0.0077,
+      "z": -1.51
+    },
+    "ts_oracle_floor": 6,
+    "ts_floor": 6,
+    "ts_regret": 3.161,
+    "uniform_regret": 38.361,
+    "ts_vs_default_floor_lift": 0.004555357496533796,
+    "guarded_revenue": 1981.46,
+    "unguarded_revenue": 1441.66,
+    "guarded_arpdau_lift": 0.3744294771305301,
+    "ua_roas": {
+      "lints": 0.03861,
+      "uniform": 0.03347,
+      "oracle": 0.03949
+    },
+    "ua_lift_vs_uniform": 0.15357036151777703
+  },
+  "soma": {
+    "dev": {
+      "extraction": {
+        "precision": 1.0,
+        "recall": 0.9957,
+        "f1": 0.9979,
+        "tp": 1163,
+        "fp": 0,
+        "fn": 5,
+        "per_field": {
+          "applicant_name": {
+            "correct": 50,
+            "total": 50
+          },
+          "entity_type": {
+            "correct": 50,
+            "total": 50
+          },
+          "fein": {
+            "correct": 50,
+            "total": 50
+          },
+          "mailing_street": {
+            "correct": 50,
+            "total": 50
+          },
+          "mailing_city": {
+            "correct": 50,
+            "total": 50
+          },
+          "mailing_state": {
+            "correct": 50,
+            "total": 50
+          },
+          "mailing_zip": {
+            "correct": 50,
+            "total": 50
+          },
+          "business_phone": {
+            "correct": 50,
+            "total": 50
+          },
+          "contact_name": {
+            "correct": 50,
+            "total": 50
+          },
+          "contact_email": {
+            "correct": 50,
+            "total": 50
+          },
+          "years_in_business": {
+            "correct": 50,
+            "total": 50
+          },
+          "business_description": {
+            "correct": 50,
+            "total": 50
+          },
+          "naics": {
+            "correct": 50,
+            "total": 50
+          },
+          "employees_full_time": {
+            "correct": 50,
+            "total": 50
+          },
+          "employees_part_time": {
+            "correct": 50,
+            "total": 50
+          },
+          "annual_revenue": {
+            "correct": 45,
+            "total": 50
+          },
+          "policy_effective_date": {
+            "correct": 50,
+            "total": 50
+          },
+          "lines_of_business": {
+            "correct": 50,
+            "total": 50
+          },
+          "gl_each_occurrence": {
+            "correct": 50,
+            "total": 50
+          },
+          "gl_general_aggregate": {
+            "correct": 50,
+            "total": 50
+          },
+          "gl_deductible": {
+            "correct": 50,
+            "total": 50
+          },
+          "prior_losses_3y": {
+            "correct": 50,
+            "total": 50
+          },
+          "prior_carrier": {
+            "correct": 50,
+            "total": 50
+          },
+          "hazards": {
+            "correct": 18,
+            "total": 18
+          }
+        }
+      },
+      "portal_fill": {
+        "should_submit": 38,
+        "succeeded": 38,
+        "rate": 1.0,
+        "failures": []
+      },
+      "turns": {
+        "avg_to_completion": 5.08,
+        "min": 5,
+        "max": 6
+      },
+      "handoff": {
+        "predicted": 12,
+        "expected": 12,
+        "true_positive": 12,
+        "precision": 1.0,
+        "recall": 1.0,
+        "reasons": {
+          "8": [
+            "high_risk",
+            [
+              "high_risk_hazard:explosives"
+            ]
+          ],
+          "14": [
+            "ambiguous",
+            [
+              "low_confidence:annual_revenue=0.00"
+            ]
+          ],
+          "17": [
+            "ambiguous",
+            [
+              "low_confidence:annual_revenue=0.00"
+            ]
+          ],
+          "22": [
+            "high_risk",
+            [
+              "high_risk_hazard:liquor"
+            ]
+          ],
+          "28": [
+            "high_risk",
+            [
+              "high_risk_hazard:roof_work"
+            ]
+          ],
+          "30": [
+            "ambiguous",
+            [
+              "low_confidence:annual_revenue=0.00"
+            ]
+          ],
+          "32": [
+            "ambiguous",
+            [
+              "low_confidence:annual_revenue=0.00"
+            ]
+          ],
+          "38": [
+            "high_risk",
+            [
+              "high_risk_hazard:explosives"
+            ]
+          ],
+          "42": [
+            "high_risk",
+            [
+              "high_risk_hazard:explosives"
+            ]
+          ],
+          "43": [
+            "high_risk",
+            [
+              "high_risk_hazard:explosives"
+            ]
+          ],
+          "46": [
+            "high_risk",
+            [
+              "high_risk_hazard:roof_work"
+            ]
+          ],
+          "47": [
+            "ambiguous",
+            [
+              "low_confidence:annual_revenue=0.00"
+            ]
+          ]
+        }
+      },
+      "calibration": {
+        "conf>=0.80_accuracy": 1.0,
+        "conf>=0.80_n": 1155,
+        "conf<0.80_accuracy": 1.0,
+        "conf<0.80_n": 8
+      }
+    },
+    "heldout": {
+      "extraction": {
+        "precision": 0.952,
+        "recall": 0.8851,
+        "f1": 0.9173,
+        "tp": 1032,
+        "fp": 52,
+        "fn": 134,
+        "per_field": {
+          "applicant_name": {
+            "correct": 50,
+            "total": 50
+          },
+          "entity_type": {
+            "correct": 50,
+            "total": 50
+          },
+          "fein": {
+            "correct": 50,
+            "total": 50
+          },
+          "mailing_street": {
+            "correct": 50,
+            "total": 50
+          },
+          "mailing_city": {
+            "correct": 50,
+            "total": 50
+          },
+          "mailing_state": {
+            "correct": 50,
+            "total": 50
+          },
+          "mailing_zip": {
+            "correct": 50,
+            "total": 50
+          },
+          "business_phone": {
+            "correct": 50,
+            "total": 50
+          },
+          "contact_name": {
+            "correct": 50,
+            "total": 50
+          },
+          "contact_email": {
+            "correct": 50,
+            "total": 50
+          },
+          "years_in_business": {
+            "correct": 11,
+            "total": 50
+          },
+          "business_description": {
+            "correct": 50,
+            "total": 50
+          },
+          "naics": {
+            "correct": 50,
+            "total": 50
+          },
+          "employees_full_time": {
+            "correct": 26,
+            "total": 50
+          },
+          "employees_part_time": {
+            "correct": 31,
+            "total": 50
+          },
+          "annual_revenue": {
+            "correct": 40,
+            "total": 50
+          },
+          "policy_effective_date": {
+            "correct": 50,
+            "total": 50
+          },
+          "lines_of_business": {
+            "correct": 50,
+            "total": 50
+          },
+          "gl_each_occurrence": {
+            "correct": 39,
+            "total": 50
+          },
+          "gl_general_aggregate": {
+            "correct": 39,
+            "total": 50
+          },
+          "gl_deductible": {
+            "correct": 39,
+            "total": 50
+          },
+          "prior_losses_3y": {
+            "correct": 50,
+            "total": 50
+          },
+          "prior_carrier": {
+            "correct": 42,
+            "total": 50
+          },
+          "hazards": {
+            "correct": 15,
+            "total": 16
+          }
+        }
+      },
+      "portal_fill": {
+        "should_submit": 38,
+        "succeeded": 8,
+        "rate": 0.2105,
+        "failures": [
+          {
+            "case": 1,
+            "scenario": "conflict_corrected",
+            "mismatch": {
+              "employees_full_time": [
+                2,
+                8
+              ]
+            }
+          },
+          {
+            "case": 2,
+            "scenario": "needs_followup",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.44"
+            ],
+            "gaps": []
+          },
+          {
+            "case": 5,
+            "scenario": "needs_followup",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ],
+            "gaps": []
+          },
+          {
+            "case": 6,
+            "scenario": "clean",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "low_confidence:gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ],
+            "gaps": [
+              "gl_each_occurrence",
+              "gl_general_aggregate"
+            ]
+          },
+          {
+            "case": 9,
+            "scenario": "needs_followup",
+            "mismatch": {
+              "employees_full_time": [
+                1,
+                8
+              ]
+            }
+          },
+          {
+            "case": 10,
+            "scenario": "clean",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49"
+            ],
+            "gaps": []
+          },
+          {
+            "case": 12,
+            "scenario": "needs_followup",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49"
+            ],
+            "gaps": []
+          },
+          {
+            "case": 13,
+            "scenario": "clean",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ],
+            "gaps": [
+              "gl_each_occurrence",
+              "gl_general_aggregate"
+            ]
+          },
+          {
+            "case": 15,
+            "scenario": "clean",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ],
+            "gaps": [
+              "gl_each_occurrence",
+              "gl_general_aggregate"
+            ]
+          },
+          {
+            "case": 18,
+            "scenario": "needs_followup",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "low_confidence:prior_carrier=0.00"
+            ],
+            "gaps": [
+              "prior_carrier"
+            ]
+          },
+          {
+            "case": 19,
+            "scenario": "clean",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49"
+            ],
+            "gaps": []
+          },
+          {
+            "case": 20,
+            "scenario": "clean",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "low_confidence:prior_carrier=0.00"
+            ],
+            "gaps": [
+              "prior_carrier"
+            ]
+          },
+          {
+            "case": 21,
+            "scenario": "clean",
+            "mismatch": {
+              "employees_full_time": [
+                1,
+                12
+              ]
+            }
+          },
+          {
+            "case": 23,
+            "scenario": "clean",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49"
+            ],
+            "gaps": []
+          },
+          {
+            "case": 24,
+            "scenario": "needs_followup",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ],
+            "gaps": []
+          },
+          {
+            "case": 25,
+            "scenario": "conflict_corrected",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49"
+            ],
+            "gaps": []
+          },
+          {
+            "case": 26,
+            "scenario": "needs_followup",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ],
+            "gaps": [
+              "gl_each_occurrence",
+              "gl_general_aggregate"
+            ]
+          },
+          {
+            "case": 27,
+            "scenario": "conflict_corrected",
+            "mismatch": {
+              "employees_full_time": [
+                1,
+                5
+              ]
+            }
+          },
+          {
+            "case": 29,
+            "scenario": "clean",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49"
+            ],
+            "gaps": []
+          },
+          {
+            "case": 33,
+            "scenario": "clean",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "low_confidence:prior_carrier=0.00"
+            ],
+            "gaps": [
+              "prior_carrier"
+            ]
+          },
+          {
+            "case": 34,
+            "scenario": "clean",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49"
+            ],
+            "gaps": []
+          },
+          {
+            "case": 35,
+            "scenario": "clean",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49"
+            ],
+            "gaps": []
+          },
+          {
+            "case": 36,
+            "scenario": "needs_followup",
+            "mismatch": {
+              "employees_full_time": [
+                3,
+                9
+              ]
+            }
+          },
+          {
+            "case": 39,
+            "scenario": "conflict_corrected",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ],
+            "gaps": [
+              "gl_each_occurrence",
+              "gl_general_aggregate"
+            ]
+          },
+          {
+            "case": 40,
+            "scenario": "needs_followup",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ],
+            "gaps": [
+              "gl_each_occurrence",
+              "gl_general_aggregate"
+            ]
+          },
+          {
+            "case": 41,
+            "scenario": "conflict_corrected",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49"
+            ],
+            "gaps": []
+          },
+          {
+            "case": 44,
+            "scenario": "clean",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00,prior_carrier=0.00"
+            ],
+            "gaps": [
+              "prior_carrier"
+            ]
+          },
+          {
+            "case": 48,
+            "scenario": "conflict_corrected",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49"
+            ],
+            "gaps": []
+          },
+          {
+            "case": 49,
+            "scenario": "needs_followup",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ],
+            "gaps": []
+          },
+          {
+            "case": 50,
+            "scenario": "clean",
+            "status": "HUMAN_HANDOFF",
+            "reasons": [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ],
+            "gaps": [
+              "gl_each_occurrence",
+              "gl_general_aggregate"
+            ]
+          }
+        ]
+      },
+      "turns": {
+        "avg_to_completion": 5.08,
+        "min": 5,
+        "max": 6
+      },
+      "handoff": {
+        "predicted": 37,
+        "expected": 12,
+        "true_positive": 12,
+        "precision": 0.3243,
+        "recall": 1.0,
+        "reasons": {
+          "2": [
+            "needs_followup",
+            [
+              "unresolved_conflict:annual_revenue=0.44"
+            ]
+          ],
+          "5": [
+            "needs_followup",
+            [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ]
+          ],
+          "6": [
+            "clean",
+            [
+              "low_confidence:gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ]
+          ],
+          "8": [
+            "high_risk",
+            [
+              "high_risk_hazard:roof_work"
+            ]
+          ],
+          "10": [
+            "clean",
+            [
+              "unresolved_conflict:annual_revenue=0.49"
+            ]
+          ],
+          "12": [
+            "needs_followup",
+            [
+              "unresolved_conflict:annual_revenue=0.49"
+            ]
+          ],
+          "13": [
+            "clean",
+            [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ]
+          ],
+          "14": [
+            "ambiguous",
+            [
+              "low_confidence:annual_revenue=0.00"
+            ]
+          ],
+          "15": [
+            "clean",
+            [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ]
+          ],
+          "17": [
+            "ambiguous",
+            [
+              "low_confidence:annual_revenue=0.00"
+            ]
+          ],
+          "18": [
+            "needs_followup",
+            [
+              "low_confidence:prior_carrier=0.00"
+            ]
+          ],
+          "19": [
+            "clean",
+            [
+              "unresolved_conflict:annual_revenue=0.49"
+            ]
+          ],
+          "20": [
+            "clean",
+            [
+              "low_confidence:prior_carrier=0.00"
+            ]
+          ],
+          "22": [
+            "high_risk",
+            [
+              "high_risk_hazard:childcare"
+            ]
+          ],
+          "23": [
+            "clean",
+            [
+              "unresolved_conflict:annual_revenue=0.49"
+            ]
+          ],
+          "24": [
+            "needs_followup",
+            [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ]
+          ],
+          "25": [
+            "conflict_corrected",
+            [
+              "unresolved_conflict:annual_revenue=0.49"
+            ]
+          ],
+          "26": [
+            "needs_followup",
+            [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ]
+          ],
+          "28": [
+            "high_risk",
+            [
+              "high_risk_hazard:roof_work"
+            ]
+          ],
+          "29": [
+            "clean",
+            [
+              "unresolved_conflict:annual_revenue=0.49"
+            ]
+          ],
+          "30": [
+            "ambiguous",
+            [
+              "low_confidence:gl_each_occurrence=0.00,gl_general_aggregate=0.00,prior_carrier=0.00"
+            ]
+          ],
+          "32": [
+            "ambiguous",
+            [
+              "low_confidence:annual_revenue=0.00"
+            ]
+          ],
+          "33": [
+            "clean",
+            [
+              "low_confidence:prior_carrier=0.00"
+            ]
+          ],
+          "34": [
+            "clean",
+            [
+              "unresolved_conflict:annual_revenue=0.49"
+            ]
+          ],
+          "35": [
+            "clean",
+            [
+              "unresolved_conflict:annual_revenue=0.49"
+            ]
+          ],
+          "38": [
+            "high_risk",
+            [
+              "high_risk_hazard:explosives"
+            ]
+          ],
+          "39": [
+            "conflict_corrected",
+            [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ]
+          ],
+          "40": [
+            "needs_followup",
+            [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ]
+          ],
+          "41": [
+            "conflict_corrected",
+            [
+              "unresolved_conflict:annual_revenue=0.49"
+            ]
+          ],
+          "42": [
+            "high_risk",
+            [
+              "high_risk_hazard:childcare"
+            ]
+          ],
+          "43": [
+            "high_risk",
+            [
+              "high_risk_hazard:liquor"
+            ]
+          ],
+          "44": [
+            "clean",
+            [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00,prior_carrier=0.00"
+            ]
+          ],
+          "46": [
+            "high_risk",
+            [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ]
+          ],
+          "47": [
+            "ambiguous",
+            [
+              "low_confidence:annual_revenue=0.00,prior_carrier=0.00"
+            ]
+          ],
+          "48": [
+            "conflict_corrected",
+            [
+              "unresolved_conflict:annual_revenue=0.49"
+            ]
+          ],
+          "49": [
+            "needs_followup",
+            [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ]
+          ],
+          "50": [
+            "clean",
+            [
+              "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+            ]
+          ]
+        }
+      },
+      "calibration": {
+        "conf>=0.80_accuracy": 0.9661,
+        "conf>=0.80_n": 1033,
+        "conf<0.80_accuracy": 0.6667,
+        "conf<0.80_n": 51
+      }
+    }
+  }
+}

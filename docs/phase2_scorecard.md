@@ -1,6 +1,6 @@
 # Phase 2 Scorecard
 
-_Generated 2026-11-09, 37.4s, LLM: deterministic mock (set ANTHROPIC_API_KEY or OPENAI_API_KEY for a real provider)._
+_Generated 2026-11-09, 34.5s, LLM: deterministic mock (set ANTHROPIC_API_KEY or OPENAI_API_KEY for a real provider)._
 
 | check | result | detail |
 |---|---|---|
@@ -115,7 +115,7 @@ theta = 0.14554, rho = 0.264406, **variance reduction 7.06%**, relative lift +11
 | fixed-horizon z-test, stop at first p<0.05 (peeking) | 0.2125 | 0.05 |
 | mSPRT always-valid, stop at first p<=0.05 | 0.0125 | 0.05 |
 
-_0.6s_
+_0.5s_
 
 ### 7. Approval ledger (`approvals` table)
 
@@ -202,7 +202,7 @@ Disagreements (critic stricter than the construction label):
 | 14 | daily-medium | `WASN/AKAL/TEWI/EIID` | 8/18 | 100 | 0.32 | 0.3189 | {'solvability_fairness': 5, 'difficulty_fit': 5, 'lexical_quality': 5, 'board_quality': 5} | heuristic |
 | 15 | daily-hard | `ULOTU/OOSOU/AESHU/DGPNN/TOHER` | 22/38 | 110 | 0.42 | 0.4006 | {'solvability_fairness': 5, 'difficulty_fit': 5, 'lexical_quality': 5, 'board_quality': 5} | heuristic |
 
-_1.1s, every publish approved by the release gate (solver proof + critic in ledger)_
+_0.9s, every publish approved by the release gate (solver proof + critic in ledger)_
 
 Release-gate decisions: {'approved': 5}
 
@@ -243,17 +243,17 @@ Level 15 in rotation after monitor: **False**
 
 | tool | calls | ok | blocked by guard | p50 ms | p95 ms |
 |---|---|---|---|---|---|
-| baseline_metrics | 1 | 1 | 0 | 28.41 | 28.41 |
-| configure_flag | 4 | 2 | 2 | 9.52 | 10.76 |
-| critique_level | 162 | 162 | 0 | 2.4 | 5.25 |
-| evaluate_experiment | 9 | 9 | 0 | 43.57 | 99.28 |
-| generate_candidates | 5 | 5 | 0 | 99.15 | 556.8 |
-| live_level_health | 1 | 1 | 0 | 11.2 | 11.2 |
-| power_analysis | 1 | 1 | 0 | 0.54 | 0.54 |
-| propose_easier_level | 2 | 2 | 0 | 239.1 | 239.1 |
-| prove_level | 170 | 170 | 0 | 0.85 | 1.53 |
-| publish_level | 5 | 5 | 0 | 8.96 | 9.44 |
-| retire_level | 1 | 1 | 0 | 10.76 | 10.76 |
-| rollback_experiment | 1 | 1 | 0 | 6.3 | 6.3 |
-| scan_funnel | 1 | 1 | 0 | 8.06 | 8.06 |
-| ship_experiment | 1 | 1 | 0 | 10.01 | 10.01 |
+| baseline_metrics | 1 | 1 | 0 | 28.62 | 28.62 |
+| configure_flag | 4 | 2 | 2 | 7.66 | 10.74 |
+| critique_level | 162 | 162 | 0 | 2.04 | 3.15 |
+| evaluate_experiment | 9 | 9 | 0 | 31.66 | 97.25 |
+| generate_candidates | 5 | 5 | 0 | 81.86 | 452.7 |
+| live_level_health | 1 | 1 | 0 | 11.55 | 11.55 |
+| power_analysis | 1 | 1 | 0 | 0.33 | 0.33 |
+| propose_easier_level | 2 | 2 | 0 | 211.8 | 211.8 |
+| prove_level | 170 | 170 | 0 | 0.66 | 1.19 |
+| publish_level | 5 | 5 | 0 | 7.35 | 9.49 |
+| retire_level | 1 | 1 | 0 | 4.67 | 4.67 |
+| rollback_experiment | 1 | 1 | 0 | 7.98 | 7.98 |
+| scan_funnel | 1 | 1 | 0 | 7.34 | 7.34 |
+| ship_experiment | 1 | 1 | 0 | 8.2 | 8.2 |

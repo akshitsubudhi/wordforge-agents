@@ -25,6 +25,7 @@ Failure modes & 1-step mitigation
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -167,6 +168,15 @@ def main() -> int:
     out = a.out or s.data_dir / "reports" / "ad_economy.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(report)
+    out.with_suffix(".json").write_text(json.dumps({
+        "hb_vs_strategic_waterfall_ecpm_uplift": uplift, "latency_ratio": by["waterfall_strategic"].latency_mean_ms / by["hb_second"].latency_mean_ms,
+        "shading_max_err": u["max_abs_error"], "revenue_equivalence": re_, "ts_oracle_floor": ts["oracle_floor"], "ts_floor": ts["ts_floor"],
+        "ts_regret": ts["regret_usd"], "uniform_regret": ts["uniform_regret_usd"],
+        "ts_vs_default_floor_lift": ts["truth_ecpm_by_floor"][ts["ts_floor"]] / ts["truth_ecpm_by_floor"][2] - 1,
+        "guarded_revenue": g["revenue_usd"], "unguarded_revenue": ug["revenue_usd"],
+        "guarded_arpdau_lift": g["revenue_usd"] / ug["revenue_usd"] - 1,
+        "ua_roas": {k: v["roas"] for k, v in T.items()}, "ua_lift_vs_uniform": T["lints"]["roas"] / T["uniform"]["roas"] - 1,
+        "checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in CHECKS]}, indent=2, default=str))
     failed = [n for n, ok, _ in CHECKS if not ok]
     print(f"\n{len(CHECKS) - len(failed)}/{len(CHECKS)} checks passed -> {out}")
     db.close()

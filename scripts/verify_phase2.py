@@ -204,7 +204,13 @@ def project1(db: TelemetryDB, factory: LevelFactory, tracer: Tracer, daily_users
     md += ["### 7. Approval ledger (`approvals` table)", "",
            table(["tool", "args", "decision", "by", "reason"],
                  [[r[0], r[1][:70], r[2], r[3], r[4][:90]] for r in appr]), ""]
-    return md, {"scan": scan, "launch_a": launch_a, "launch_b": launch_b, "anomaly": anomaly}
+    last_a, last_b = ev_a["peeks"][-1], ev_b["peeks"][-1]
+    metrics = {"anomaly": anomaly.get("message"), "cuped_variance_reduction_pct": cu["variance_reduction_pct"], "cuped_rho": cu["rho"],
+               "relative_lift": cu["relative_lift_cuped"], "good_d1_delta": last_a["d1_delta"], "good_d1_ci": last_a["d1_ci"],
+               "good_ship_day": ev_a["days"], "harmful_d1_delta": last_b["d1_delta"], "harmful_d1_ci": last_b["d1_ci"],
+               "harmful_rollback_day": ev_b["days"], "n_without_cuped": pw["n_total_without_cuped"], "n_with_cuped": pw["n_total"],
+               "naive_peeking_fpr": pk.naive_false_positive_rate, "msprt_fpr": pk.msprt_false_positive_rate}
+    return md, {"scan": scan, "launch_a": launch_a, "launch_b": launch_b, "anomaly": anomaly, "metrics": metrics}
 
 
 def project2(db: TelemetryDB, factory: LevelFactory, run_date: str) -> tuple[list[str], dict]:
@@ -261,7 +267,11 @@ def project2(db: TelemetryDB, factory: LevelFactory, run_date: str) -> tuple[lis
     with db.cursor() as con:
         gate = con.execute("SELECT decision, count(*) FROM approvals WHERE agent='level_factory' GROUP BY 1").fetchall()
     md += [f"Release-gate decisions: {dict(gate)}", ""]
-    return md, {"shipped": shipped, "golden": ev}
+    return md, {"shipped": shipped, "golden": ev, "metrics": {
+        "agreement_pct": ev["agreement_pct"], "kappa": ev["cohens_kappa"], "recall_reject": ev["recall_reject"],
+        "precision_reject": ev["precision_reject"], "calibration_mae": cal.get("mae_after"), "funnel": dict(f),
+        "calibration_points": [{k: p.get(k) for k in ("level_id", "attempts", "fail_rate", "predicted", "target", "time_limit_s")} |
+                               {"words": len(p["words"])} for p in factory.calibration_points]}}
 
 
 def game_check(db: TelemetryDB, factory: LevelFactory, shipped: list[dict]) -> list[str]:
@@ -338,7 +348,7 @@ def main() -> int:
     mem = InMemoryExporter()
     tracer = Tracer(Tee(mem) if a.no_trace else Tee(mem, DuckDBSpanExporter(s.traces_db)), service_name="phase2-verify")
     factory = LevelFactory(db, tracer=tracer, seed=7)
-    md1, _ = project1(db, factory, tracer, a.daily_users, a.days)
+    md1, p1 = project1(db, factory, tracer, a.daily_users, a.days)
     md2, p2 = project2(db, factory, a.date)
     md3 = game_check(db, factory, p2["shipped"])
     md4 = harness_summary(mem)
@@ -350,6 +360,8 @@ def main() -> int:
     out = a.out or s.data_dir / "reports" / "phase2_scorecard.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(report)
+    out.with_suffix(".json").write_text(json.dumps({"project1": p1["metrics"], "project2": p2["metrics"],
+                                                    "checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in CHECKS]}, indent=2, default=str))
     failed = [n for n, ok, _ in CHECKS if not ok]
     print(f"\n{len(CHECKS) - len(failed)}/{len(CHECKS)} checks passed -> {out}")
     db.close()

@@ -1,0 +1,1061 @@
+{
+  "dev": {
+    "n": 50,
+    "seconds": 4.2,
+    "style": "dev",
+    "extraction": {
+      "precision": 1.0,
+      "recall": 0.9957,
+      "f1": 0.9979,
+      "tp": 1163,
+      "fp": 0,
+      "fn": 5,
+      "per_field": {
+        "applicant_name": {
+          "correct": 50,
+          "total": 50
+        },
+        "entity_type": {
+          "correct": 50,
+          "total": 50
+        },
+        "fein": {
+          "correct": 50,
+          "total": 50
+        },
+        "mailing_street": {
+          "correct": 50,
+          "total": 50
+        },
+        "mailing_city": {
+          "correct": 50,
+          "total": 50
+        },
+        "mailing_state": {
+          "correct": 50,
+          "total": 50
+        },
+        "mailing_zip": {
+          "correct": 50,
+          "total": 50
+        },
+        "business_phone": {
+          "correct": 50,
+          "total": 50
+        },
+        "contact_name": {
+          "correct": 50,
+          "total": 50
+        },
+        "contact_email": {
+          "correct": 50,
+          "total": 50
+        },
+        "years_in_business": {
+          "correct": 50,
+          "total": 50
+        },
+        "business_description": {
+          "correct": 50,
+          "total": 50
+        },
+        "naics": {
+          "correct": 50,
+          "total": 50
+        },
+        "employees_full_time": {
+          "correct": 50,
+          "total": 50
+        },
+        "employees_part_time": {
+          "correct": 50,
+          "total": 50
+        },
+        "annual_revenue": {
+          "correct": 45,
+          "total": 50
+        },
+        "policy_effective_date": {
+          "correct": 50,
+          "total": 50
+        },
+        "lines_of_business": {
+          "correct": 50,
+          "total": 50
+        },
+        "gl_each_occurrence": {
+          "correct": 50,
+          "total": 50
+        },
+        "gl_general_aggregate": {
+          "correct": 50,
+          "total": 50
+        },
+        "gl_deductible": {
+          "correct": 50,
+          "total": 50
+        },
+        "prior_losses_3y": {
+          "correct": 50,
+          "total": 50
+        },
+        "prior_carrier": {
+          "correct": 50,
+          "total": 50
+        },
+        "hazards": {
+          "correct": 18,
+          "total": 18
+        }
+      }
+    },
+    "calibration": {
+      "conf>=0.80_accuracy": 1.0,
+      "conf>=0.80_n": 1155,
+      "conf<0.80_accuracy": 1.0,
+      "conf<0.80_n": 8
+    },
+    "portal_fill": {
+      "should_submit": 38,
+      "succeeded": 38,
+      "rate": 1.0,
+      "failures": []
+    },
+    "turns": {
+      "avg_to_completion": 5.08,
+      "min": 5,
+      "max": 6
+    },
+    "handoff": {
+      "predicted": 12,
+      "expected": 12,
+      "true_positive": 12,
+      "precision": 1.0,
+      "recall": 1.0,
+      "reasons": {
+        "8": [
+          "high_risk",
+          [
+            "high_risk_hazard:explosives"
+          ]
+        ],
+        "14": [
+          "ambiguous",
+          [
+            "low_confidence:annual_revenue=0.00"
+          ]
+        ],
+        "17": [
+          "ambiguous",
+          [
+            "low_confidence:annual_revenue=0.00"
+          ]
+        ],
+        "22": [
+          "high_risk",
+          [
+            "high_risk_hazard:liquor"
+          ]
+        ],
+        "28": [
+          "high_risk",
+          [
+            "high_risk_hazard:roof_work"
+          ]
+        ],
+        "30": [
+          "ambiguous",
+          [
+            "low_confidence:annual_revenue=0.00"
+          ]
+        ],
+        "32": [
+          "ambiguous",
+          [
+            "low_confidence:annual_revenue=0.00"
+          ]
+        ],
+        "38": [
+          "high_risk",
+          [
+            "high_risk_hazard:explosives"
+          ]
+        ],
+        "42": [
+          "high_risk",
+          [
+            "high_risk_hazard:explosives"
+          ]
+        ],
+        "43": [
+          "high_risk",
+          [
+            "high_risk_hazard:explosives"
+          ]
+        ],
+        "46": [
+          "high_risk",
+          [
+            "high_risk_hazard:roof_work"
+          ]
+        ],
+        "47": [
+          "ambiguous",
+          [
+            "low_confidence:annual_revenue=0.00"
+          ]
+        ]
+      }
+    },
+    "durability": {
+      "process_restarts": 150,
+      "replay_deterministic": true,
+      "crash_cases": [
+        {
+          "case": 1,
+          "crashed_in": "portal",
+          "recovered": true,
+          "final": "SUBMITTED",
+          "portal_submissions": 1,
+          "outbound_msgs": 1,
+          "followup_activities": 1,
+          "exactly_once": true
+        },
+        {
+          "case": 2,
+          "crashed_in": "followup",
+          "recovered": true,
+          "final": "SUBMITTED",
+          "portal_submissions": 1,
+          "outbound_msgs": 2,
+          "followup_activities": 2,
+          "exactly_once": true
+        },
+        {
+          "case": 3,
+          "crashed_in": "portal",
+          "recovered": true,
+          "final": "SUBMITTED",
+          "portal_submissions": 1,
+          "outbound_msgs": 1,
+          "followup_activities": 1,
+          "exactly_once": true
+        },
+        {
+          "case": 4,
+          "crashed_in": "followup",
+          "recovered": true,
+          "final": "SUBMITTED",
+          "portal_submissions": 1,
+          "outbound_msgs": 2,
+          "followup_activities": 2,
+          "exactly_once": true
+        },
+        {
+          "case": 5,
+          "crashed_in": "portal",
+          "recovered": true,
+          "final": "SUBMITTED",
+          "portal_submissions": 1,
+          "outbound_msgs": 1,
+          "followup_activities": 1,
+          "exactly_once": true
+        },
+        {
+          "case": 6,
+          "crashed_in": "followup",
+          "recovered": true,
+          "final": "SUBMITTED",
+          "portal_submissions": 1,
+          "outbound_msgs": 2,
+          "followup_activities": 2,
+          "exactly_once": true
+        }
+      ]
+    },
+    "scenarios": {
+      "clean": {
+        "n": 18,
+        "submitted": 18,
+        "handoff": 0
+      },
+      "needs_followup": {
+        "n": 14,
+        "submitted": 14,
+        "handoff": 0
+      },
+      "conflict_corrected": {
+        "n": 6,
+        "submitted": 6,
+        "handoff": 0
+      },
+      "high_risk": {
+        "n": 7,
+        "submitted": 0,
+        "handoff": 7
+      },
+      "ambiguous": {
+        "n": 5,
+        "submitted": 0,
+        "handoff": 5
+      }
+    },
+    "harness": {
+      "workflows": 204,
+      "tool_calls": 310,
+      "guard_blocks": 0
+    }
+  },
+  "heldout": {
+    "n": 50,
+    "seconds": 4.3,
+    "style": "heldout",
+    "extraction": {
+      "precision": 0.952,
+      "recall": 0.8851,
+      "f1": 0.9173,
+      "tp": 1032,
+      "fp": 52,
+      "fn": 134,
+      "per_field": {
+        "applicant_name": {
+          "correct": 50,
+          "total": 50
+        },
+        "entity_type": {
+          "correct": 50,
+          "total": 50
+        },
+        "fein": {
+          "correct": 50,
+          "total": 50
+        },
+        "mailing_street": {
+          "correct": 50,
+          "total": 50
+        },
+        "mailing_city": {
+          "correct": 50,
+          "total": 50
+        },
+        "mailing_state": {
+          "correct": 50,
+          "total": 50
+        },
+        "mailing_zip": {
+          "correct": 50,
+          "total": 50
+        },
+        "business_phone": {
+          "correct": 50,
+          "total": 50
+        },
+        "contact_name": {
+          "correct": 50,
+          "total": 50
+        },
+        "contact_email": {
+          "correct": 50,
+          "total": 50
+        },
+        "years_in_business": {
+          "correct": 11,
+          "total": 50
+        },
+        "business_description": {
+          "correct": 50,
+          "total": 50
+        },
+        "naics": {
+          "correct": 50,
+          "total": 50
+        },
+        "employees_full_time": {
+          "correct": 26,
+          "total": 50
+        },
+        "employees_part_time": {
+          "correct": 31,
+          "total": 50
+        },
+        "annual_revenue": {
+          "correct": 40,
+          "total": 50
+        },
+        "policy_effective_date": {
+          "correct": 50,
+          "total": 50
+        },
+        "lines_of_business": {
+          "correct": 50,
+          "total": 50
+        },
+        "gl_each_occurrence": {
+          "correct": 39,
+          "total": 50
+        },
+        "gl_general_aggregate": {
+          "correct": 39,
+          "total": 50
+        },
+        "gl_deductible": {
+          "correct": 39,
+          "total": 50
+        },
+        "prior_losses_3y": {
+          "correct": 50,
+          "total": 50
+        },
+        "prior_carrier": {
+          "correct": 42,
+          "total": 50
+        },
+        "hazards": {
+          "correct": 15,
+          "total": 16
+        }
+      }
+    },
+    "calibration": {
+      "conf>=0.80_accuracy": 0.9661,
+      "conf>=0.80_n": 1033,
+      "conf<0.80_accuracy": 0.6667,
+      "conf<0.80_n": 51
+    },
+    "portal_fill": {
+      "should_submit": 38,
+      "succeeded": 8,
+      "rate": 0.2105,
+      "failures": [
+        {
+          "case": 1,
+          "scenario": "conflict_corrected",
+          "mismatch": {
+            "employees_full_time": [
+              2,
+              8
+            ]
+          }
+        },
+        {
+          "case": 2,
+          "scenario": "needs_followup",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.44"
+          ],
+          "gaps": []
+        },
+        {
+          "case": 5,
+          "scenario": "needs_followup",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ],
+          "gaps": []
+        },
+        {
+          "case": 6,
+          "scenario": "clean",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "low_confidence:gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ],
+          "gaps": [
+            "gl_each_occurrence",
+            "gl_general_aggregate"
+          ]
+        },
+        {
+          "case": 9,
+          "scenario": "needs_followup",
+          "mismatch": {
+            "employees_full_time": [
+              1,
+              8
+            ]
+          }
+        },
+        {
+          "case": 10,
+          "scenario": "clean",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49"
+          ],
+          "gaps": []
+        },
+        {
+          "case": 12,
+          "scenario": "needs_followup",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49"
+          ],
+          "gaps": []
+        },
+        {
+          "case": 13,
+          "scenario": "clean",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ],
+          "gaps": [
+            "gl_each_occurrence",
+            "gl_general_aggregate"
+          ]
+        },
+        {
+          "case": 15,
+          "scenario": "clean",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ],
+          "gaps": [
+            "gl_each_occurrence",
+            "gl_general_aggregate"
+          ]
+        },
+        {
+          "case": 18,
+          "scenario": "needs_followup",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "low_confidence:prior_carrier=0.00"
+          ],
+          "gaps": [
+            "prior_carrier"
+          ]
+        },
+        {
+          "case": 19,
+          "scenario": "clean",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49"
+          ],
+          "gaps": []
+        },
+        {
+          "case": 20,
+          "scenario": "clean",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "low_confidence:prior_carrier=0.00"
+          ],
+          "gaps": [
+            "prior_carrier"
+          ]
+        },
+        {
+          "case": 21,
+          "scenario": "clean",
+          "mismatch": {
+            "employees_full_time": [
+              1,
+              12
+            ]
+          }
+        },
+        {
+          "case": 23,
+          "scenario": "clean",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49"
+          ],
+          "gaps": []
+        },
+        {
+          "case": 24,
+          "scenario": "needs_followup",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ],
+          "gaps": []
+        },
+        {
+          "case": 25,
+          "scenario": "conflict_corrected",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49"
+          ],
+          "gaps": []
+        },
+        {
+          "case": 26,
+          "scenario": "needs_followup",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ],
+          "gaps": [
+            "gl_each_occurrence",
+            "gl_general_aggregate"
+          ]
+        },
+        {
+          "case": 27,
+          "scenario": "conflict_corrected",
+          "mismatch": {
+            "employees_full_time": [
+              1,
+              5
+            ]
+          }
+        },
+        {
+          "case": 29,
+          "scenario": "clean",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49"
+          ],
+          "gaps": []
+        },
+        {
+          "case": 33,
+          "scenario": "clean",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "low_confidence:prior_carrier=0.00"
+          ],
+          "gaps": [
+            "prior_carrier"
+          ]
+        },
+        {
+          "case": 34,
+          "scenario": "clean",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49"
+          ],
+          "gaps": []
+        },
+        {
+          "case": 35,
+          "scenario": "clean",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49"
+          ],
+          "gaps": []
+        },
+        {
+          "case": 36,
+          "scenario": "needs_followup",
+          "mismatch": {
+            "employees_full_time": [
+              3,
+              9
+            ]
+          }
+        },
+        {
+          "case": 39,
+          "scenario": "conflict_corrected",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ],
+          "gaps": [
+            "gl_each_occurrence",
+            "gl_general_aggregate"
+          ]
+        },
+        {
+          "case": 40,
+          "scenario": "needs_followup",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ],
+          "gaps": [
+            "gl_each_occurrence",
+            "gl_general_aggregate"
+          ]
+        },
+        {
+          "case": 41,
+          "scenario": "conflict_corrected",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49"
+          ],
+          "gaps": []
+        },
+        {
+          "case": 44,
+          "scenario": "clean",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00,prior_carrier=0.00"
+          ],
+          "gaps": [
+            "prior_carrier"
+          ]
+        },
+        {
+          "case": 48,
+          "scenario": "conflict_corrected",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49"
+          ],
+          "gaps": []
+        },
+        {
+          "case": 49,
+          "scenario": "needs_followup",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ],
+          "gaps": []
+        },
+        {
+          "case": 50,
+          "scenario": "clean",
+          "status": "HUMAN_HANDOFF",
+          "reasons": [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ],
+          "gaps": [
+            "gl_each_occurrence",
+            "gl_general_aggregate"
+          ]
+        }
+      ]
+    },
+    "turns": {
+      "avg_to_completion": 5.08,
+      "min": 5,
+      "max": 6
+    },
+    "handoff": {
+      "predicted": 37,
+      "expected": 12,
+      "true_positive": 12,
+      "precision": 0.3243,
+      "recall": 1.0,
+      "reasons": {
+        "2": [
+          "needs_followup",
+          [
+            "unresolved_conflict:annual_revenue=0.44"
+          ]
+        ],
+        "5": [
+          "needs_followup",
+          [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ]
+        ],
+        "6": [
+          "clean",
+          [
+            "low_confidence:gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ]
+        ],
+        "8": [
+          "high_risk",
+          [
+            "high_risk_hazard:roof_work"
+          ]
+        ],
+        "10": [
+          "clean",
+          [
+            "unresolved_conflict:annual_revenue=0.49"
+          ]
+        ],
+        "12": [
+          "needs_followup",
+          [
+            "unresolved_conflict:annual_revenue=0.49"
+          ]
+        ],
+        "13": [
+          "clean",
+          [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ]
+        ],
+        "14": [
+          "ambiguous",
+          [
+            "low_confidence:annual_revenue=0.00"
+          ]
+        ],
+        "15": [
+          "clean",
+          [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ]
+        ],
+        "17": [
+          "ambiguous",
+          [
+            "low_confidence:annual_revenue=0.00"
+          ]
+        ],
+        "18": [
+          "needs_followup",
+          [
+            "low_confidence:prior_carrier=0.00"
+          ]
+        ],
+        "19": [
+          "clean",
+          [
+            "unresolved_conflict:annual_revenue=0.49"
+          ]
+        ],
+        "20": [
+          "clean",
+          [
+            "low_confidence:prior_carrier=0.00"
+          ]
+        ],
+        "22": [
+          "high_risk",
+          [
+            "high_risk_hazard:childcare"
+          ]
+        ],
+        "23": [
+          "clean",
+          [
+            "unresolved_conflict:annual_revenue=0.49"
+          ]
+        ],
+        "24": [
+          "needs_followup",
+          [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ]
+        ],
+        "25": [
+          "conflict_corrected",
+          [
+            "unresolved_conflict:annual_revenue=0.49"
+          ]
+        ],
+        "26": [
+          "needs_followup",
+          [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ]
+        ],
+        "28": [
+          "high_risk",
+          [
+            "high_risk_hazard:roof_work"
+          ]
+        ],
+        "29": [
+          "clean",
+          [
+            "unresolved_conflict:annual_revenue=0.49"
+          ]
+        ],
+        "30": [
+          "ambiguous",
+          [
+            "low_confidence:gl_each_occurrence=0.00,gl_general_aggregate=0.00,prior_carrier=0.00"
+          ]
+        ],
+        "32": [
+          "ambiguous",
+          [
+            "low_confidence:annual_revenue=0.00"
+          ]
+        ],
+        "33": [
+          "clean",
+          [
+            "low_confidence:prior_carrier=0.00"
+          ]
+        ],
+        "34": [
+          "clean",
+          [
+            "unresolved_conflict:annual_revenue=0.49"
+          ]
+        ],
+        "35": [
+          "clean",
+          [
+            "unresolved_conflict:annual_revenue=0.49"
+          ]
+        ],
+        "38": [
+          "high_risk",
+          [
+            "high_risk_hazard:explosives"
+          ]
+        ],
+        "39": [
+          "conflict_corrected",
+          [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ]
+        ],
+        "40": [
+          "needs_followup",
+          [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ]
+        ],
+        "41": [
+          "conflict_corrected",
+          [
+            "unresolved_conflict:annual_revenue=0.49"
+          ]
+        ],
+        "42": [
+          "high_risk",
+          [
+            "high_risk_hazard:childcare"
+          ]
+        ],
+        "43": [
+          "high_risk",
+          [
+            "high_risk_hazard:liquor"
+          ]
+        ],
+        "44": [
+          "clean",
+          [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00,prior_carrier=0.00"
+          ]
+        ],
+        "46": [
+          "high_risk",
+          [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ]
+        ],
+        "47": [
+          "ambiguous",
+          [
+            "low_confidence:annual_revenue=0.00,prior_carrier=0.00"
+          ]
+        ],
+        "48": [
+          "conflict_corrected",
+          [
+            "unresolved_conflict:annual_revenue=0.49"
+          ]
+        ],
+        "49": [
+          "needs_followup",
+          [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ]
+        ],
+        "50": [
+          "clean",
+          [
+            "unresolved_conflict:annual_revenue=0.49,gl_each_occurrence=0.00,gl_general_aggregate=0.00"
+          ]
+        ]
+      }
+    },
+    "durability": {
+      "process_restarts": 150,
+      "replay_deterministic": true,
+      "crash_cases": [
+        {
+          "case": 1,
+          "crashed_in": "portal",
+          "recovered": true,
+          "final": "SUBMITTED",
+          "portal_submissions": 1,
+          "outbound_msgs": 1,
+          "followup_activities": 1,
+          "exactly_once": true
+        },
+        {
+          "case": 2,
+          "crashed_in": "followup",
+          "recovered": true,
+          "final": "HUMAN_HANDOFF",
+          "portal_submissions": 0,
+          "outbound_msgs": 3,
+          "followup_activities": 3,
+          "exactly_once": true
+        },
+        {
+          "case": 3,
+          "crashed_in": "portal",
+          "recovered": true,
+          "final": "SUBMITTED",
+          "portal_submissions": 1,
+          "outbound_msgs": 1,
+          "followup_activities": 1,
+          "exactly_once": true
+        },
+        {
+          "case": 4,
+          "crashed_in": "followup",
+          "recovered": true,
+          "final": "SUBMITTED",
+          "portal_submissions": 1,
+          "outbound_msgs": 2,
+          "followup_activities": 2,
+          "exactly_once": true
+        },
+        {
+          "case": 6,
+          "crashed_in": "followup",
+          "recovered": true,
+          "final": "HUMAN_HANDOFF",
+          "portal_submissions": 0,
+          "outbound_msgs": 3,
+          "followup_activities": 3,
+          "exactly_once": true
+        }
+      ]
+    },
+    "scenarios": {
+      "clean": {
+        "n": 18,
+        "submitted": 5,
+        "handoff": 13
+      },
+      "needs_followup": {
+        "n": 14,
+        "submitted": 6,
+        "handoff": 8
+      },
+      "conflict_corrected": {
+        "n": 6,
+        "submitted": 2,
+        "handoff": 4
+      },
+      "high_risk": {
+        "n": 7,
+        "submitted": 0,
+        "handoff": 7
+      },
+      "ambiguous": {
+        "n": 5,
+        "submitted": 0,
+        "handoff": 5
+      }
+    },
+    "harness": {
+      "workflows": 228,
+      "tool_calls": 385,
+      "guard_blocks": 0
+    }
+  }
+}

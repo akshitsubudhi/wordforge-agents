@@ -323,3 +323,28 @@ From `make phase3`. Full reports: [ad economy](phase3_ad_economy_scorecard.md),
 
 - **Ad economy assumptions:** UA CPI levels and channel-quality multipliers are stated
   assumptions. Only D1 LTV per geo tier and platform is measured from telemetry.
+
+
+## Phase 4: Evaluator Control Center
+
+`make run` serves the Control Center at `/` (`app/dashboard.py` + `app/static/control_center.html`).
+
+- **In-process jobs.** Every button submits a job to a single-worker queue inside the server process,
+  so it uses the server's own DuckDB writer with no lock contention. The page polls the job's step log,
+  so guardrail decisions stream in live, each with a trace ID that opens a span waterfall.
+- **Human approval.** The copilot's `configure_flag` and `ship_experiment` calls go through a real
+  approval broker. The job blocks until the evaluator clicks Approve or Deny, and is denied
+  automatically after 120 s (fail-closed).
+- **Fault drills.** The four drills live in `app/fault_drills.py` and are shared by the UI,
+  `make faults` and the tests.
+- **Scorecard.** `scripts/build_scorecard.py` merges every evaluation's JSON into
+  `docs/scorecard.json`, the single source for the README table and the Overview tiles.
+- **Postmortem.** [THREE_WAYS_MY_AGENT_BROKE.md](THREE_WAYS_MY_AGENT_BROKE.md) covers three real
+  failures, with reproductions in `scripts/repro_incidents.py`.
+
+| Block | Failure mode | Mitigation |
+|---|---|---|
+| Job queue | A job crashes | Status becomes `error` with the exception; the worker keeps running |
+| Approval broker | Nobody answers | Denied after 120 s; the flag never activates |
+| App lifespan | Stale handlers bound to a closed DB (reload, or a second TestClient) | Control Center state is reset on every startup |
+| Demo state | Repeated demos accumulate factory levels and experiments | The "Reset demo state" button keeps seed and live play data |

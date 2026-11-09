@@ -27,7 +27,12 @@ Failure modes & 1-step mitigation
     BLOCKS OR CRASHES on telemetry.
   * Prolonged outage -> buffer is size-capped; oldest spans are dropped and
     counted (`dropped` stat) instead of growing memory unbounded.
-  * Process exit -> atexit force_flush() makes a final best-effort write.
+  * Process exit -> close() retries the final flush with backoff, then
+    SPILLS anything unwritten to <db>.spool.jsonl, which the next exporter
+    ingests (fixed after a missing-trace incident; see
+    docs/THREE_WAYS_MY_AGENT_BROKE.md).
+  * Concurrent flushes (background thread + forced flush) -> serialised by
+    a flush lock; they used to race on CREATE TABLE (write-write conflict).
 ================================================================================
 """
 from __future__ import annotations
@@ -148,8 +153,10 @@ class DuckDBSpanExporter:
         self.db_path = Path(db_path)
         self.max_buffer, self.batch_size, self.flush_interval_s = max_buffer, batch_size, flush_interval_s
         self.buffer: deque[Span] = deque()
-        self.stats = {"exported": 0, "dropped": 0, "flush_failures": 0, "last_error": ""}
+        self.stats = {"exported": 0, "dropped": 0, "flush_failures": 0, "last_error": "", "spilled": 0, "unspooled": 0}
         self._lock = threading.Lock()
+        self._flush_lock = threading.Lock()   # ONE flusher at a time: concurrent DuckDB writers raced on CREATE TABLE
+        self.spool_path = self.db_path.with_suffix(".spool.jsonl")
         self._backoff_until = 0.0
         self._consecutive_failures = 0
         self._stop = threading.Event()
@@ -171,10 +178,34 @@ class DuckDBSpanExporter:
         while not self._stop.wait(self.flush_interval_s):
             self.flush()
 
-    def flush(self, force: bool = False) -> int:
-        """Never raises. Returns spans written."""
+    def flush(self, force: bool = False, retries: int = 0) -> int:
+        """Never raises. Returns spans written. force=True waits for an in-flight flush instead of racing it."""
         if not force and time.monotonic() < self._backoff_until:
             return 0
+        if not self._flush_lock.acquire(blocking=force):
+            return 0  # background tick while another flush runs: skip, never race
+        try:
+            written = self._flush_locked()
+            for k in range(retries):
+                if not self.buffer:
+                    break
+                time.sleep(0.05 * 2 ** k)
+                written += self._flush_locked()
+            return written
+        finally:
+            self._flush_lock.release()
+
+    def _ingest_spool(self, con) -> None:
+        """Spans spilled by a previous process that could not reach the DB at shutdown."""
+        if not self.spool_path.exists():
+            return
+        rows = [json.loads(line) for line in self.spool_path.read_text().splitlines() if line.strip()]
+        if rows:
+            con.executemany(f"INSERT INTO spans ({','.join(SPAN_COLS)}) VALUES ({','.join('?' * len(SPAN_COLS))})", rows)
+        self.spool_path.unlink()
+        self.stats["unspooled"] += len(rows)
+
+    def _flush_locked(self) -> int:
         written = 0
         while True:
             with self._lock:
@@ -187,6 +218,7 @@ class DuckDBSpanExporter:
                 try:
                     if not self._schema_ready:
                         con.execute(SPANS_DDL)
+                        self._ingest_spool(con)
                         self._schema_ready = True
                     con.executemany(f"INSERT INTO spans ({','.join(SPAN_COLS)}) VALUES ({','.join('?' * len(SPAN_COLS))})",
                                     [s.to_row() for s in batch])
@@ -208,8 +240,23 @@ class DuckDBSpanExporter:
                 return written
 
     def close(self) -> None:
+        """Shutdown: retry the final flush, and SPILL anything still unwritten to a JSONL spool (ingested by the
+        next exporter) instead of silently losing it when the process exits."""
         self._stop.set()
-        self.flush(force=True)
+        self.flush(force=True, retries=5)
+        with self._lock:
+            left = list(self.buffer)
+            self.buffer.clear()
+        if left:
+            try:
+                with self.spool_path.open("a", encoding="utf-8") as fh:
+                    for s in left:
+                        row = s.to_row()
+                        row[6], row[7] = str(row[6]), str(row[7])
+                        fh.write(json.dumps(row, default=str) + "\n")
+                self.stats["spilled"] += len(left)
+            except OSError:
+                self.stats["dropped"] += len(left)
 
 
 class Tracer:

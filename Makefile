@@ -4,7 +4,7 @@ PY      ?= .venv/bin/python
 PORT    ?= 8000
 UV      := $(shell command -v uv 2>/dev/null)
 
-.PHONY: help setup seed reseed run stop conformance redteam metrics test check clean wordlist phase2 copilot-scan phase3 ad-economy soma-eval
+.PHONY: help setup seed reseed run stop conformance redteam metrics test check clean wordlist phase2 copilot-scan phase3 ad-economy soma-eval scorecard faults
 
 help:
 	@echo "make setup        create .venv and install deps (uv if present, else venv+pip)"
@@ -18,6 +18,9 @@ help:
 	@echo "make phase2       run Copilot + Level Factory end to end, print the scorecard (server must be stopped)"
 	@echo "make copilot-scan funnel anomaly scan only (read-only workflow)"
 	@echo "make phase3       ad economy scorecard + Soma 50-submission eval (server must be stopped)"
+	@echo "make scorecard    re-run every eval and rebuild docs/scorecard.json + SCORECARD.md (~2 min, server stopped)"
+	@echo "make faults       run the 4 production fault drills from the CLI (server stopped)"
+	@echo "open http://localhost:8000 after make run -> Evaluator Control Center"
 
 setup:
 ifdef UV
@@ -66,6 +69,13 @@ soma-eval:
 	$(PY) scripts/run_soma_eval.py --out docs/phase3_soma_eval_scorecard.md
 
 phase3: ad-economy soma-eval
+
+scorecard: phase2 phase3
+	$(PY) -m core.harness.run_redteam_eval --json data/reports/conformance.json
+	$(PY) scripts/build_scorecard.py
+
+faults:
+	$(PY) scripts/run_fault_drills.py
 
 check: test conformance
 

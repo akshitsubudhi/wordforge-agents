@@ -1,0 +1,240 @@
+{
+  "project1": {
+    "anomaly": "Level 7 has a 63% fail rate (median of other levels 23%, robust z 3.7)",
+    "cuped_variance_reduction_pct": 7.06,
+    "cuped_rho": 0.264406,
+    "relative_lift": 0.11490492054707906,
+    "good_d1_delta": 0.0089,
+    "good_d1_ci": [
+      -0.01369,
+      0.03148
+    ],
+    "good_ship_day": 7,
+    "harmful_d1_delta": -0.04684,
+    "harmful_d1_ci": [
+      -0.08865,
+      -0.00503
+    ],
+    "harmful_rollback_day": 2,
+    "n_without_cuped": 8429,
+    "n_with_cuped": 7774,
+    "naive_peeking_fpr": 0.2125,
+    "msprt_fpr": 0.0125
+  },
+  "project2": {
+    "agreement_pct": 96.0,
+    "kappa": 0.92,
+    "recall_reject": 1.0,
+    "precision_reject": 0.92,
+    "calibration_mae": 0.0636,
+    "funnel": {
+      "generated": 170,
+      "solver_verified": 170,
+      "in_difficulty_band": 162,
+      "critic_approved": 80,
+      "shipped": 3
+    },
+    "calibration_points": [
+      {
+        "level_id": 1,
+        "attempts": 4446,
+        "fail_rate": 0.04993252361673414,
+        "predicted": 0.07,
+        "target": 6,
+        "time_limit_s": 120,
+        "words": 34
+      },
+      {
+        "level_id": 2,
+        "attempts": 4532,
+        "fail_rate": 0.07590467784642542,
+        "predicted": 0.1068,
+        "target": 7,
+        "time_limit_s": 120,
+        "words": 31
+      },
+      {
+        "level_id": 3,
+        "attempts": 4552,
+        "fail_rate": 0.1179701230228471,
+        "predicted": 0.1459,
+        "target": 8,
+        "time_limit_s": 120,
+        "words": 29
+      },
+      {
+        "level_id": 4,
+        "attempts": 4429,
+        "fail_rate": 0.15669451343418378,
+        "predicted": 0.2013,
+        "target": 9,
+        "time_limit_s": 110,
+        "words": 24
+      },
+      {
+        "level_id": 5,
+        "attempts": 4406,
+        "fail_rate": 0.1772582841579664,
+        "predicted": 0.2263,
+        "target": 9,
+        "time_limit_s": 105,
+        "words": 22
+      },
+      {
+        "level_id": 6,
+        "attempts": 4392,
+        "fail_rate": 0.22928051001821492,
+        "predicted": 0.2599,
+        "target": 9,
+        "time_limit_s": 100,
+        "words": 20
+      },
+      {
+        "level_id": 7,
+        "attempts": 6442,
+        "fail_rate": 0.6271344303011487,
+        "predicted": 0.5838,
+        "target": 7,
+        "time_limit_s": 75,
+        "words": 11
+      },
+      {
+        "level_id": 8,
+        "attempts": 3976,
+        "fail_rate": 0.25100603621730383,
+        "predicted": 0.1445,
+        "target": 12,
+        "time_limit_s": 120,
+        "words": 40
+      },
+      {
+        "level_id": 9,
+        "attempts": 3985,
+        "fail_rate": 0.2740276035131744,
+        "predicted": 0.1672,
+        "target": 12,
+        "time_limit_s": 120,
+        "words": 38
+      },
+      {
+        "level_id": 10,
+        "attempts": 3921,
+        "fail_rate": 0.2948227492986483,
+        "predicted": 0.2057,
+        "target": 12,
+        "time_limit_s": 115,
+        "words": 36
+      },
+      {
+        "level_id": 11,
+        "attempts": 3874,
+        "fail_rate": 0.3260196179659267,
+        "predicted": 0.2123,
+        "target": 13,
+        "time_limit_s": 110,
+        "words": 35
+      },
+      {
+        "level_id": 12,
+        "attempts": 3905,
+        "fail_rate": 0.34571062740076824,
+        "predicted": 0.2275,
+        "target": 13,
+        "time_limit_s": 110,
+        "words": 34
+      }
+    ]
+  },
+  "checks": [
+    {
+      "name": "P1 scan flags level 7",
+      "ok": true,
+      "detail": "Level 7 has a 63% fail rate (median of other levels 23%, robust z 3.7)"
+    },
+    {
+      "name": "P1 CUPED reduces required sample",
+      "ok": true,
+      "detail": "8429 -> 7774"
+    },
+    {
+      "name": "P1 50% exposure blocked by L1",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "P1 unplanned flag denied at approval gate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "P1 DB CHECK rejects 50%",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "P1 harmful variant auto-rolled back",
+      "ok": true,
+      "detail": "day 2"
+    },
+    {
+      "name": "P1 good variant shipped after approval",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "P1 CUPED variance reduction > 0",
+      "ok": true,
+      "detail": "7.06%"
+    },
+    {
+      "name": "P1 mSPRT FPR <= alpha under peeking",
+      "ok": true,
+      "detail": "0.0125"
+    },
+    {
+      "name": "P1 naive peeking inflates FPR",
+      "ok": true,
+      "detail": "0.2125"
+    },
+    {
+      "name": "P2 difficulty model calibrated MAE < 0.10",
+      "ok": true,
+      "detail": "0.0636"
+    },
+    {
+      "name": "P2 critic kappa >= 0.6",
+      "ok": true,
+      "detail": "0.92"
+    },
+    {
+      "name": "P2 critic catches >= 95% of injected defects",
+      "ok": true,
+      "detail": "1.0"
+    },
+    {
+      "name": "P2 daily levels shipped",
+      "ok": true,
+      "detail": "3 levels"
+    },
+    {
+      "name": "GAME level 7 now serves the shipped version",
+      "ok": true,
+      "detail": "v3"
+    },
+    {
+      "name": "GAME daily levels in rotation",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "GAME daily level playable",
+      "ok": true,
+      "detail": "EHSD/SRUS/IPTR/ILEV"
+    },
+    {
+      "name": "P2 spiking daily level retired",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

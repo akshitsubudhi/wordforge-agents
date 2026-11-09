@@ -85,7 +85,9 @@ def ingest(eng: IntakeEngine, channel: str, payload: dict, when: datetime) -> st
     return eng.handle_inbound(normalize_voice(payload))
 
 
-def run_case(case: Case, store: EventStore, tracer: Tracer, crash_kind: str | None = None, max_days: int = 8) -> dict:
+def run_case(case: Case, store: EventStore, tracer: Tracer, crash_kind: str | None = None, max_days: int = 8,
+             on_day=None) -> dict:
+    """on_day(day, engine, case_id) is called after every simulated day (the Control Center streams it)."""
     sim = CustomerSimulator(case)
     base = datetime(2026, 11, 2, tzinfo=timezone.utc) + timedelta(days=case.case_no % 5)
     case_id, crashed, recovered, restarts = None, False, False, 0
@@ -119,6 +121,8 @@ def run_case(case: Case, store: EventStore, tracer: Tracer, crash_kind: str | No
         except SimulatedCrash:
             crashed = True
             continue
+        if on_day and case_id:
+            on_day(day, eng, case_id)
         if case_id and eng.state(case_id).status in TERMINAL and day >= max(p["day"] for p in case.payloads):
             break
     eng = IntakeEngine(store, tracer=tracer)
@@ -329,8 +333,8 @@ def main() -> int:
     out = a.out or real_data / "reports" / "soma_eval.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(md)
-    if a.json:
-        a.json.write_text(json.dumps({k: v for k, v in r.items() if k != "example"}, indent=2, default=str))
+    slim = lambda x: {k: v for k, v in x.items() if k not in ("example",)}
+    (a.json or out.with_suffix(".json")).write_text(json.dumps({"dev": slim(r), "heldout": slim(ho)}, indent=2, default=str))
     ok = (r["extraction"]["f1"] >= 0.90 and r["portal_fill"]["rate"] >= 0.90 and r["handoff"]["precision"] >= 0.90
           and all(c["exactly_once"] and c["recovered"] for c in r["durability"]["crash_cases"]) and r["durability"]["replay_deterministic"])
     print(f"\nRESULT: {'PASS' if ok else 'FAIL'} -> {out}")

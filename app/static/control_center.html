@@ -1,0 +1,606 @@
+<!doctype html>
+<!--
+================================================================================
+BLOCK: Evaluator Control Center (frontend, vanilla HTML/JS, zero build)
+--------------------------------------------------------------------------------
+Role & contracts
+  One page over /api/cc/* (app/dashboard.py) and the live game (/game). Every
+  button submits a server-side JOB and polls its step log, so guardrail
+  decisions stream in as they happen, each with its trace id.
+
+Key engineering mechanism
+  * Generic job runner + step renderer (status icon + label, never colour
+    alone).
+  * Tiny SVG chart kit following the data-viz method: palette roles as CSS
+    tokens (validated: blue/orange CVD dE 24.7 light, 26.8 dark), 2px lines,
+    recessive grid, legend + direct labels for 2 series, crosshair tooltip,
+    a data table under every chart.
+  * Human approval banner: the copilot job pauses until you click.
+
+Failure modes & 1-step mitigation
+  * Server restarts mid-job -> polling shows "job lost" and the button
+    re-enables. API errors -> toast, never a silent blank panel.
+================================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Control Center</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface-0: #f3f3f1; --surface-1: #fcfcfb; --surface-2: #f0efec; --line: #e1e0dc;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #7b7a75;
+  --series-1: #2a78d6; --series-2: #eb6834; --accent: #2a78d6;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --good-bg: #e9f6e9; --critical-bg: #fbeceb; --warning-bg: #fef5e3; --info-bg: #eaf2fc;
+  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #242422; --line: #33332f;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --series-1: #3987e5; --series-2: #d95926; --accent: #3987e5;
+    --good-bg: #16261a; --critical-bg: #2c1818; --warning-bg: #2b2414; --info-bg: #162232;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #242422; --line: #33332f;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+  --series-1: #3987e5; --series-2: #d95926; --accent: #3987e5;
+  --good-bg: #16261a; --critical-bg: #2c1818; --warning-bg: #2b2414; --info-bg: #162232;
+  --shadow: none;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface-0); color: var(--text-primary); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--accent); }
+.app { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+.app > * { min-width: 0; }   /* grid children default to min-width:auto; the scrolling nav must not widen the page */
+.fault-card .steps { max-height: none; overflow: visible; }
+nav { background: var(--surface-1); border-right: 1px solid var(--line); padding: 18px 12px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.brand { font-weight: 800; font-size: 16px; padding: 0 8px 4px; }
+.brand small { display: block; font-weight: 500; color: var(--text-muted); font-size: 12px; }
+nav button { display: flex; width: 100%; gap: 10px; align-items: center; text-align: left; border: 0; background: none; color: var(--text-secondary);
+  padding: 9px 10px; border-radius: 8px; font: inherit; cursor: pointer; margin-top: 2px; }
+nav button:hover { background: var(--surface-2); }
+nav button.active { background: var(--info-bg); color: var(--text-primary); font-weight: 600; }
+nav .tag { margin-left: auto; font-size: 10px; color: var(--text-muted); }
+nav .sep { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-muted); padding: 14px 10px 4px; }
+main { padding: 22px 28px 60px; max-width: 1240px; width: 100%; }
+h1 { font-size: 22px; margin: 0 0 4px; } h2 { font-size: 16px; margin: 0 0 10px; } h3 { font-size: 14px; margin: 0 0 8px; }
+.sub { color: var(--text-secondary); margin: 0 0 18px; }
+.card { background: var(--surface-1); border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); margin-bottom: 16px; min-width: 0; }
+.grid { display: grid; gap: 16px; } .g2 { grid-template-columns: repeat(2, minmax(0,1fr)); } .g4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; }
+.tile { background: var(--surface-1); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+.tile .v { font-size: 26px; font-weight: 750; letter-spacing: -.5px; }
+.tile .l { color: var(--text-secondary); font-size: 12.5px; font-weight: 600; }
+.tile .c { color: var(--text-muted); font-size: 12px; margin-top: 4px; }
+.btn { border: 1px solid var(--line); background: var(--surface-2); color: var(--text-primary); padding: 8px 14px; border-radius: 9px; font: inherit; font-weight: 600; cursor: pointer; }
+.btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
+.btn:disabled { opacity: .5; cursor: progress; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.muted { color: var(--text-muted); } .small { font-size: 12px; }
+select, input[type=range] { font: inherit; }
+select { background: var(--surface-2); color: var(--text-primary); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--text-secondary); font-weight: 600; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.scroll { overflow-x: auto; }
+.steps { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; max-height: 460px; overflow-y: auto; }
+.step { display: grid; grid-template-columns: 82px 1fr; gap: 10px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); border-left: 3px solid var(--line); animation: in .25s; }
+.step .badge { font-size: 11px; font-weight: 700; display: flex; gap: 5px; align-items: flex-start; }
+.step .t { font-weight: 600; } .step .d { color: var(--text-secondary); font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
+.step.fault { border-color: var(--serious); } .step.guard { border-color: var(--series-1); background: var(--info-bg); }
+.step.ok { border-color: var(--good); background: var(--good-bg); } .step.bad { border-color: var(--critical); background: var(--critical-bg); }
+.step.approval { border-color: var(--warning); background: var(--warning-bg); }
+@keyframes in { from { opacity: 0; transform: translateY(-3px); } }
+.pill { display: inline-flex; gap: 4px; align-items: center; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); }
+.pill.good::before { content: "✓"; color: var(--good); } .pill.crit::before { content: "✕"; color: var(--critical); } .pill.warn::before { content: "!"; color: var(--warning); }
+.trace { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; cursor: pointer; text-decoration: underline dotted; color: var(--accent); }
+.fault-card .head { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; }
+.fault-card .n { font-size: 12px; color: var(--text-muted); font-weight: 700; }
+.result { margin-top: 10px; padding: 10px; border-radius: 8px; font-weight: 600; }
+.result.good { background: var(--good-bg); } .result.bad { background: var(--critical-bg); }
+.chart { position: relative; margin-top: 8px; }
+.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.chart .grid line { stroke: var(--line); stroke-width: 1; } .chart .axis text { fill: var(--text-muted); font-size: 11px; }
+.chart .s1 { stroke: var(--series-1); } .chart .s2 { stroke: var(--series-2); } .chart .f1 { fill: var(--series-1); } .chart .f2 { fill: var(--series-2); }
+.chart .lbl { font-size: 11px; fill: var(--text-secondary); font-weight: 600; }
+.chart .band { fill: var(--series-1); opacity: .14; }
+.chart .ref { stroke: var(--text-muted); stroke-dasharray: 4 3; }
+.chart .marker { stroke: var(--serious); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.tip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 12px; box-shadow: var(--shadow); display: none; white-space: nowrap; z-index: 5; }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+.legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+details summary { cursor: pointer; color: var(--text-muted); font-size: 12px; margin-top: 6px; }
+iframe { width: 100%; height: 820px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-1); }
+.bar-row { display: grid; grid-template-columns: 170px 1fr 70px; gap: 8px; align-items: center; margin: 5px 0; font-size: 12.5px; }
+.bar-track { height: 14px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--series-1); border-radius: 0 4px 4px 0; }
+.conf { display: inline-block; width: 64px; height: 7px; background: var(--surface-2); border-radius: 4px; overflow: hidden; vertical-align: middle; margin-right: 6px; }
+.conf b { display: block; height: 100%; background: var(--series-1); }
+.approval-bar { position: sticky; top: 0; z-index: 10; background: var(--warning-bg); border: 1px solid var(--warning); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; display: none; }
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; place-items: center; z-index: 20; padding: 16px; }
+.modal.show { display: grid; }
+.modal .box { background: var(--surface-1); border-radius: 12px; padding: 18px; width: min(900px, 100%); max-height: 85vh; overflow: auto; }
+.wf { display: grid; grid-template-columns: 220px 1fr; gap: 6px; font-size: 12px; align-items: center; }
+.wf .bar { height: 12px; border-radius: 3px; background: var(--series-1); min-width: 2px; }
+.wf .bar.err { background: var(--critical); }
+.toast { position: fixed; bottom: 18px; right: 18px; background: var(--critical); color: #fff; padding: 9px 14px; border-radius: 9px; display: none; z-index: 30; }
+section { display: none; } section.show { display: block; }
+.hero { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 14px; }
+@media (max-width: 1000px) { .tiles, .g4 { grid-template-columns: repeat(2, minmax(0,1fr)); } .g2 { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; }
+  nav { position: static; height: auto; display: flex; overflow-x: auto; padding: 8px; gap: 4px; }
+  nav .brand, nav .sep { display: none; } nav button { white-space: nowrap; width: auto; }
+  main { padding: 14px 16px 40px; } .tiles, .g4 { grid-template-columns: 1fr; }
+  .bar-row { grid-template-columns: 110px 1fr 56px; } .step { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+<nav aria-label="Sections">
+  <div class="brand">LiveOps Agent Platform<small>Evaluator Control Center</small></div>
+  <div class="sep">Start here</div>
+  <button data-s="overview" class="active">◎ Overview</button>
+  <button data-s="faults">⚡ Fault drills <span class="tag">4</span></button>
+  <div class="sep">Projects</div>
+  <button data-s="game">▦ Live game</button>
+  <button data-s="sre">⛨ SRE &amp; red-team <span class="tag">P4</span></button>
+  <button data-s="copilot">⚗ LiveOps copilot <span class="tag">P1</span></button>
+  <button data-s="factory">⚙ Level factory <span class="tag">P2</span></button>
+  <button data-s="ads">$ Ad economy <span class="tag">P3</span></button>
+  <button data-s="soma">✉ Soma intake <span class="tag">P5</span></button>
+  <div class="sep">View</div>
+  <button id="themeBtn">◐ Toggle theme</button>
+</nav>
+<main>
+<div class="approval-bar" id="approvalBar" role="alert"></div>
+
+<!-- ======================= OVERVIEW ======================= -->
+<section id="s-overview" class="show">
+  <div class="hero">
+    <div>
+      <h1>Production &amp; evaluation scorecard</h1>
+      <p class="sub">Every number below is reproducible: <code>make scorecard</code>. Click a project on the left to run it live. Every action runs through the same guarded agent harness and leaves a trace you can open.</p>
+    </div>
+    <div class="row"><button class="btn primary" id="runAllFaults">⚡ Inject all 4 production faults</button>
+      <button class="btn" id="resetBtn" title="Removes factory levels, experiments, approvals and simulated events; seeded data and live play are kept">↺ Reset demo state</button></div>
+  </div>
+  <div class="tiles" id="tiles"><div class="tile muted">Loading scorecard…</div></div>
+  <div class="card" style="margin-top:16px">
+    <h2>Live system</h2>
+    <div class="row" id="counters"></div>
+  </div>
+  <div class="card">
+    <h2>Architecture at a glance: each block, and the hook that stops it failing</h2>
+    <div class="scroll"><table id="blocks"></table></div>
+  </div>
+</section>
+
+<!-- ======================= FAULTS ======================= -->
+<section id="s-faults">
+  <h1>Simulate production failure &amp; auto-mitigate</h1>
+  <p class="sub">Each drill injects a real fault into the real component and streams what the guardrail did, with the trace id of the decision. Nothing is mocked except the fault itself.</p>
+  <div class="row" style="margin-bottom:14px"><button class="btn primary" id="runAllFaults2">Run all four</button><span class="muted small">≈5 seconds in total</span></div>
+  <div class="grid g2" id="faultGrid"></div>
+</section>
+
+<!-- ======================= GAME ======================= -->
+<section id="s-game">
+  <h1>Live game: LetterLoop</h1>
+  <p class="sub">Server-refereed word game. Every move is telemetry in DuckDB. Factory-built levels show a green badge; levels under an experiment serve 20% of players the candidate version.</p>
+  <div class="grid" style="grid-template-columns: minmax(0,1.6fr) minmax(0,1fr)">
+    <iframe id="gameFrame" src="/game" title="LetterLoop game"></iframe>
+    <div class="card"><div class="row" style="justify-content:space-between"><h2>Funnel by active version</h2><button class="btn" id="funnelBtn">Refresh</button></div>
+      <div class="scroll"><table id="funnel"></table></div></div>
+  </div>
+</section>
+
+<!-- ======================= SRE ======================= -->
+<section id="s-sre">
+  <h1>SRE telemetry &amp; red-team console</h1>
+  <p class="sub">Project 4: the harness every agent runs on. Three switchable defence layers, non-switchable checkpoints, and OpenTelemetry-shaped spans in DuckDB.</p>
+  <div class="card"><div class="row" style="justify-content:space-between"><h2>Guardrail conformance: 25 fixtures + 10 benign controls × 5 configs</h2><button class="btn primary" id="confBtn">Run 185 runs</button></div>
+    <div id="confOut" class="scroll"></div></div>
+  <div class="grid g2">
+    <div class="card"><div class="row" style="justify-content:space-between"><h2>Latency, cost &amp; success by span</h2><button class="btn" id="metricsBtn">Refresh</button></div>
+      <div class="scroll"><table id="metrics"></table></div></div>
+    <div class="card"><div class="row" style="justify-content:space-between"><h2>Recent traces</h2><button class="btn" id="tracesBtn">Refresh</button></div>
+      <div class="scroll"><table id="traces"></table></div></div>
+  </div>
+</section>
+
+<!-- ======================= COPILOT ======================= -->
+<section id="s-copilot">
+  <h1>LiveOps experimentation copilot</h1>
+  <p class="sub">Project 1: funnel anomaly → power analysis → Level Factory variant → ≤20% feature flag behind <b>your</b> approval → daily CUPED + mSPRT peeks → automatic rollback or approved ship.</p>
+  <div class="card"><div class="row" style="justify-content:space-between"><h2>Funnel scan &amp; power analysis</h2><button class="btn" id="scanBtn">Scan</button></div><div id="scanOut"></div></div>
+  <div class="card">
+    <h2>Run a live A/B experiment on level 7</h2>
+    <div class="row">
+      <label>True effect <select id="scenario"><option value="good">Easier level 7: +12% completions</option><option value="harmful">Trivial level 7: −6pp D1 retention</option></select></label>
+      <label class="row small"><input type="checkbox" id="human" checked> I approve the flag and the ship (human gate)</label>
+      <button class="btn primary" id="expBtn">Launch experiment</button>
+    </div>
+    <div class="chart" id="expChart"></div>
+    <div id="expSteps" class="steps"></div>
+  </div>
+</section>
+
+<!-- ======================= FACTORY ======================= -->
+<section id="s-factory">
+  <h1>Autonomous level factory</h1>
+  <p class="sub">Project 2: generator → Trie+DFS solver proof (independently re-checked) → calibrated difficulty model → 4-rubric critic → release-gated publish into the live rotation.</p>
+  <div class="card">
+    <div class="row">
+      <label>Target fail rate <input type="range" id="goal" min="0.15" max="0.5" step="0.01" value="0.30"> <b id="goalV">30%</b></label>
+      <label>Board <select id="size"><option value="4">4×4</option><option value="5">5×5</option></select></label>
+      <label>Time <select id="tl"><option>80</option><option selected>100</option><option>120</option></select> s</label>
+      <button class="btn primary" id="pushBtn">Generate, verify &amp; push level to live game</button>
+    </div>
+    <div id="pushResult"></div>
+    <div class="scroll"><table id="cands"></table></div>
+  </div>
+  <div class="card"><div class="row" style="justify-content:space-between"><h2>Critic vs 100-level golden set</h2><button class="btn" id="goldenBtn">Evaluate</button></div><div id="goldenOut"></div></div>
+</section>
+
+<!-- ======================= ADS ======================= -->
+<section id="s-ads">
+  <h1>Ad auction simulator &amp; bandit agent</h1>
+  <p class="sub">Project 3: 5-network mediation, waterfall vs header bidding with Bayes-Nash bid shading, Thompson-sampled floors, LinTS UA allocation. The dark-network incident is under Fault drills.</p>
+  <div class="card"><div class="row" style="justify-content:space-between"><h2>Mechanism comparison</h2><button class="btn primary" id="mechBtn">Run 75k auctions</button></div><div id="mechOut"></div></div>
+  <div class="grid g2">
+    <div class="card"><div class="row" style="justify-content:space-between"><h2>Thompson-sampled reserve floor</h2><button class="btn" id="floorBtn">Tune</button></div><div id="floorOut"></div></div>
+    <div class="card"><div class="row" style="justify-content:space-between"><h2>UA budget: contextual LTV bandit</h2><button class="btn" id="uaBtn">Allocate 40 days</button></div><div id="uaOut"></div></div>
+  </div>
+</section>
+
+<!-- ======================= SOMA ======================= -->
+<section id="s-soma">
+  <h1>Soma AI multi-channel intake</h1>
+  <p class="sub">Project 5: e-mail → Twilio SMS → voice call over three days; a fresh engine process each day replays the SQLite event history; ACORD 125/126 extraction with confidence and provenance; confidence-gated human handoff; carrier portal auto-fill.</p>
+  <div class="card">
+    <div class="row">
+      <label>Customer <select id="somaScen"><option value="clean">Clean</option><option value="needs_followup">Needs follow-up</option><option value="conflict_corrected">Corrects themselves</option><option value="high_risk">High-risk business</option><option value="ambiguous">Never gives revenue</option></select></label>
+      <label>Phrasing <select id="somaStyle"><option value="dev">development</option><option value="heldout">held-out (unseen)</option></select></label>
+      <button class="btn primary" id="somaBtn">Run intake</button>
+      <a class="small" href="/mock-carrier-portal" target="_blank" rel="noopener">open the carrier portal ↗</a>
+    </div>
+    <div class="grid g2" style="margin-top:8px">
+      <div><h3>Conversation &amp; decisions</h3><div id="somaSteps" class="steps"></div></div>
+      <div><h3>ACORD record</h3><div id="somaRecord" class="scroll"></div></div>
+    </div>
+  </div>
+</section>
+</main>
+</div>
+<div class="modal" id="modal"><div class="box" id="modalBox"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = (v, d = 2) => (v === null || v === undefined) ? "-" : (typeof v === "number" ? (Math.abs(v) >= 1000 ? v.toLocaleString() : (+v.toFixed(d)).toString()) : esc(v));
+function toast(m) { const t = $("#toast"); t.textContent = m; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 4000); }
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 160)}`);
+  return r.json();
+}
+
+// ---------------- theme
+try { const t = localStorage.getItem("cc_theme"); if (t) document.documentElement.dataset.theme = t; } catch {}
+$("#themeBtn").onclick = () => {
+  const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.dataset.theme = dark ? "light" : "dark";
+  try { localStorage.setItem("cc_theme", document.documentElement.dataset.theme); } catch {}
+};
+
+// ---------------- navigation
+function show(s) {
+  document.querySelectorAll("section").forEach((x) => x.classList.toggle("show", x.id === "s-" + s));
+  document.querySelectorAll("nav button[data-s]").forEach((b) => b.classList.toggle("active", b.dataset.s === s));
+  if (s === "game") loadFunnel(); if (s === "sre") { loadMetrics(); loadTraces(); }
+  try { history.replaceState(null, "", "#" + s); } catch {}
+}
+document.querySelectorAll("nav button[data-s]").forEach((b) => b.onclick = () => show(b.dataset.s));
+
+// ---------------- jobs
+const ICON = { fault: "⚡ FAULT", guard: "🛡 GUARD", ok: "✓ OK", bad: "✕ IMPACT", info: "· INFO", approval: "? APPROVE" };
+function stepEl(s) {
+  const d = document.createElement("div");
+  d.className = "step " + (s.status || "info");
+  const tr = (s.detail || "").match(/trace ([0-9a-f]{32})/);
+  d.innerHTML = `<div class="badge">${ICON[s.status] || "·"}</div><div><div class="t">${esc(s.title)}</div>` +
+    (s.detail ? `<div class="d">${esc(s.detail)}</div>` : "") + (s.guardrail ? `<div class="d small">guardrail: <code>${esc(s.guardrail)}</code></div>` : "") + `</div>`;
+  if (tr) d.querySelector(".d").innerHTML = esc(s.detail).replace(tr[1], `<span class="trace" data-trace="${tr[1]}">${tr[1]}</span>`);
+  return d;
+}
+async function runJob(kind, params, { stepsEl, onStep, onDone, btn } = {}) {
+  if (btn) btn.disabled = true;
+  try {
+    const { job_id } = await api("/api/cc/jobs", { kind, params });
+    let since = 0;
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 350));
+      let j;
+      try { j = await api(`/api/cc/jobs/${job_id}?since=${since}`); } catch (e) { toast("job lost: " + e.message); break; }
+      for (const s of j.steps) {
+        if (stepsEl) { stepsEl.appendChild(stepEl(s)); stepsEl.scrollTop = stepsEl.scrollHeight; }
+        if (s.status === "approval") showApproval(s);
+        onStep && onStep(s);
+      }
+      since = j.next;
+      if (j.status === "done" || j.status === "error") { hideApproval(); onDone && onDone(j.result, j); if (j.error) toast(j.error); break; }
+    }
+  } catch (e) { toast(e.message); }
+  if (btn) btn.disabled = false;
+}
+
+// ---------------- approvals
+function showApproval(s) {
+  const bar = $("#approvalBar");
+  bar.innerHTML = `<b>Human approval required:</b> <code>${esc(s.title.replace("HUMAN APPROVAL REQUIRED: ", ""))}</code> <span class="small muted">${esc(s.detail)}</span>
+    <div class="row" style="margin-top:6px"><button class="btn primary" data-a="approve">Approve</button><button class="btn" data-a="deny">Deny</button>
+    <span class="small muted">auto-denied after 120 s (fail-closed)</span></div>`;
+  bar.style.display = "block";
+  bar.querySelectorAll("button").forEach((b) => b.onclick = async () => {
+    try { await api(`/api/cc/approvals/${s.approval_id}?decision=${b.dataset.a}`, {}); } catch (e) { toast(e.message); }
+    hideApproval();
+  });
+}
+function hideApproval() { $("#approvalBar").style.display = "none"; }
+
+// ---------------- trace modal
+document.addEventListener("click", async (e) => {
+  const t = e.target.closest("[data-trace]");
+  if (!t) { if (e.target.id === "modal") $("#modal").classList.remove("show"); return; }
+  try {
+    const d = await api(`/api/cc/traces/${t.dataset.trace}`);
+    const total = Math.max(...d.spans.map((s) => s.offset_ms + s.duration_ms), 1);
+    let html = `<div class="row" style="justify-content:space-between"><h2>Trace ${esc(d.trace_id)}</h2><button class="btn" onclick="document.getElementById('modal').classList.remove('show')">Close</button></div><div class="wf">`;
+    for (const s of d.spans) {
+      const blocks = s.events.filter((e) => e.name.startsWith("guard") || e.name.startsWith("checkpoint"));
+      html += `<div>${esc(s.name)}${s.tool ? " · <b>" + esc(s.tool) + "</b>" : ""}<div class="small muted">${fmt(s.duration_ms)} ms ${s.status === "ERROR" ? "· " + esc(s.status_message) : ""}</div>
+        ${blocks.map((b) => `<div class="small">🛡 ${esc(b.name)} ${esc(JSON.stringify(b.attributes))}</div>`).join("")}</div>
+        <div style="position:relative;height:12px"><div class="bar ${s.status === "ERROR" ? "err" : ""}" style="margin-left:${(s.offset_ms / total * 100).toFixed(2)}%;width:${Math.max(0.4, s.duration_ms / total * 100).toFixed(2)}%"></div></div>`;
+    }
+    $("#modalBox").innerHTML = html + "</div>";
+    $("#modal").classList.add("show");
+  } catch (err) { toast(err.message); }
+});
+
+// ---------------- chart kit
+function lineChart(el, { x, series, band, ref, markers = [], yfmt = (v) => fmt(v), title = "", yMin = null, yMax = null }) {
+  const W = 680, H = 230, m = { l: 48, r: 92, t: 12, b: 26 };
+  const all = series.flatMap((s) => s.values).concat(band ? band.lo.concat(band.hi) : []).concat(ref ? [ref.y] : []).filter((v) => v !== null && isFinite(v));
+  let lo = Math.min(...all), hi = Math.max(...all); if (lo === hi) { lo -= 1; hi += 1; }
+  const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+  if (yMin !== null) lo = Math.max(lo, yMin); if (yMax !== null) hi = Math.min(hi, yMax);   // e.g. p-values live in [0, 1]
+  const X = (i) => m.l + (x.length === 1 ? 0 : i / (x.length - 1)) * (W - m.l - m.r), Y = (v) => m.t + (1 - (v - lo) / (hi - lo)) * (H - m.t - m.b);
+  const ticks = [0, 1, 2, 3].map((k) => lo + (hi - lo) * k / 3);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)}"><g class="grid">${ticks.map((t) => `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(t)}" y2="${Y(t)}"/>`).join("")}</g>`;
+  svg += `<g class="axis">${ticks.map((t) => `<text x="${m.l - 6}" y="${Y(t) + 4}" text-anchor="end">${esc(yfmt(t))}</text>`).join("")}`;
+  const step = Math.max(1, Math.ceil(x.length / 8));
+  svg += x.map((v, i) => i % step === 0 || i === x.length - 1 ? `<text x="${X(i)}" y="${H - 6}" text-anchor="middle">${esc(v)}</text>` : "").join("") + `</g>`;
+  if (band) svg += `<path class="band" d="M${band.hi.map((v, i) => `${X(i)},${Y(v)}`).join("L")}L${band.lo.map((v, i) => `${X(i)},${Y(v)}`).reverse().join("L")}Z"/>`;
+  if (ref) svg += `<line class="ref" x1="${m.l}" x2="${W - m.r}" y1="${Y(ref.y)}" y2="${Y(ref.y)}"/><text class="lbl" x="${W - m.r + 4}" y="${Y(ref.y) + 4}">${esc(ref.label)}</text>`;
+  for (const mk of markers) svg += `<line class="marker" x1="${X(mk.i)}" x2="${X(mk.i)}" y1="${m.t}" y2="${H - m.b}"/><text class="lbl" x="${X(mk.i) + 4}" y="${m.t + 10}">⚡ ${esc(mk.label)}</text>`;
+  series.forEach((s, k) => {
+    const pts = s.values.map((v, i) => v === null ? null : `${X(i)},${Y(v)}`).filter(Boolean);
+    svg += `<polyline fill="none" class="s${k + 1}" stroke-width="2" stroke-linejoin="round" points="${pts.join(" ")}"/>`;
+    const li = s.values.length - 1;
+    if (series.length > 1 && li >= 0) svg += `<text class="lbl" x="${X(li) + 6}" y="${Y(s.values[li]) + 4 + (k ? 10 : -4)}">${esc(s.name)}</text>`;
+  });
+  svg += `<line class="xh" stroke="var(--text-muted)" stroke-width="1" y1="${m.t}" y2="${H - m.b}" style="display:none"/><rect x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="transparent" class="hit"/></svg>`;
+  const legend = series.length > 1 ? `<div class="legend">${series.map((s, k) => `<span><i style="background:var(--series-${k + 1})"></i>${esc(s.name)}</span>`).join("")}${band ? '<span><i style="background:var(--series-1);opacity:.3;height:8px"></i>' + esc(band.name || "interval") + "</span>" : ""}</div>` : "";
+  const rows = x.map((v, i) => `<tr><td>${esc(v)}</td>${series.map((s) => `<td class="num">${fmt(s.values[i], 4)}</td>`).join("")}${band ? `<td class="num">[${fmt(band.lo[i], 4)}, ${fmt(band.hi[i], 4)}]</td>` : ""}</tr>`).join("");
+  el.innerHTML = (title ? `<h3>${esc(title)}</h3>` : "") + svg + legend + `<div class="tip"></div><details><summary>data table</summary><table><tr><th></th>${series.map((s) => `<th class="num">${esc(s.name)}</th>`).join("")}${band ? `<th class="num">${esc(band.name || "interval")}</th>` : ""}</tr>${rows}</table></details>`;
+  const svgEl = el.querySelector("svg"), tip = el.querySelector(".tip"), xh = el.querySelector(".xh");
+  el.querySelector(".hit").addEventListener("mousemove", (ev) => {
+    const r = svgEl.getBoundingClientRect(), sx = (ev.clientX - r.left) / r.width * W;
+    const i = Math.max(0, Math.min(x.length - 1, Math.round((sx - m.l) / (W - m.l - m.r) * (x.length - 1))));
+    xh.setAttribute("x1", X(i)); xh.setAttribute("x2", X(i)); xh.style.display = "";
+    tip.innerHTML = `<b>${esc(x[i])}</b><br>` + series.map((s, k) => `<span style="color:var(--series-${k + 1})">■</span> ${esc(s.name)}: ${esc(yfmt(s.values[i]))}`).join("<br>") +
+      (band ? `<br>${esc(band.name || "interval")}: [${esc(yfmt(band.lo[i]))}, ${esc(yfmt(band.hi[i]))}]` : "");
+    tip.style.display = "block"; tip.style.left = Math.min(r.width - 170, X(i) / W * r.width + 12) + "px"; tip.style.top = "8px";
+  });
+  el.querySelector(".hit").addEventListener("mouseleave", () => { tip.style.display = "none"; xh.style.display = "none"; });
+}
+function bars(rows, { valueFmt = (v) => fmt(v), max } = {}) {
+  const mx = max ?? Math.max(...rows.map((r) => r.value), 1e-9);
+  return rows.map((r) => `<div class="bar-row" title="${esc(r.label)}: ${esc(valueFmt(r.value))}"><div>${esc(r.label)}</div><div class="bar-track"><div class="bar-fill" style="width:${(r.value / mx * 100).toFixed(1)}%"></div></div><div class="num">${esc(valueFmt(r.value))}</div></div>`).join("");
+}
+const tbl = (head, rows) => `<table><tr>${head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</table>`;
+
+// ---------------- overview
+const BLOCKS = [
+  ["Game referee", "app/game_api.py", "server rebuilds every word from coordinates; clock + dedupe server-side"],
+  ["Telemetry store", "core/db.py", "single-writer lock → clear error + exit 2; additive migrations only"],
+  ["Agent harness", "core/harness/runner.py", "validate → L1 → L3 → breaker → timeout → retry(idempotent) → L2 → span"],
+  ["Defence layers", "core/harness/redteam_guard.py", "allowlist + pinned args · spotlighting · read-only tokens / approvals / DLP"],
+  ["Resilience", "core/harness/resilience.py", "full-jitter retry, circuit breaker, pre-call USD cap, sandbox with audit hook"],
+  ["Stats engine", "agents/liveops_copilot/stats_engine.py", "mSPRT always-valid inference: peeking cannot inflate false positives"],
+  ["Copilot", "agents/liveops_copilot/agent.py", "≤20% exposure ×3 enforcement, human gate, auto-rollback on guardrail harm"],
+  ["Solver", "agents/level_factory/solver.py", "Trie+DFS proof re-checked by the referee; unsolvable → can't publish"],
+  ["Critic + release gate", "agents/level_factory/critic_and_eval.py", "publish only with proof + critic in ledger; live spike → retire"],
+  ["Ad ops agent", "agents/ad_economy/bandit_agent.py", "EWMA → quarantine / guarded LKG rollback / escalate"],
+  ["Intake workflow", "agents/soma_intake/workflow.py", "event history replay; exactly-once activities; conf < 0.80 → human"],
+  ["Carrier portal bot", "agents/soma_intake/portal_automation.py", "label-mapped filling; idempotent client_ref; field errors → human"],
+];
+async function loadOverview() {
+  $("#blocks").innerHTML = tbl(["Block", "File", "Mitigation hook"], BLOCKS.map((b) => [esc(b[0]), `<code>${esc(b[1])}</code>`, esc(b[2])]));
+  try {
+    const o = await api("/api/cc/overview");
+    const c = o.counts;
+    $("#counters").innerHTML = [["events", c.events], ["live player events", c.live_events], ["active levels", c.active_levels], ["factory levels live", c.factory_levels],
+      ["active experiments", c.active_flags], ["approval decisions", c.approvals], ["traces", o.traces.traces], ["spans", o.traces.spans]]
+      .map(([k, v]) => `<span class="pill">${esc(k)}: <b>${fmt(v, 0)}</b></span>`).join("");
+    const sc = o.scorecard;
+    if (!sc) { $("#tiles").innerHTML = `<div class="tile">No scorecard yet: run <code>make scorecard</code>.</div>`; return; }
+    $("#tiles").innerHTML = sc.headline.map((t) => `<div class="tile"><div class="l">${esc(t.label)}</div><div class="v">${esc(t.value)}</div><div class="c">${esc(t.caption)}</div></div>`).join("");
+  } catch (e) { toast(e.message); }
+}
+
+// ---------------- faults
+const FAULTS = [
+  ["hallucinated_level", "LLM hallucinates an unsolvable level", "solver.py proof → critic → release gate → DB re-solve"],
+  ["network_dark", "Ad network goes dark mid-day", "EWMA dark rule → quarantine (circuit open) → half-open probe"],
+  ["peeking", "Peeking false-positive experiment", "mSPRT always-valid p-value → copilot ship gate"],
+  ["prompt_injection", "Indirect prompt injection in a support ticket", "L2 spotlight redaction → L1 PolicyGuard cap → L3 approval"],
+];
+function buildFaults() {
+  $("#faultGrid").innerHTML = FAULTS.map(([k, t, g], i) => `<div class="card fault-card" id="f-${k}"><div class="head"><div><div class="n">FAULT ${i + 1}</div><h2>${esc(t)}</h2></div>
+    <button class="btn primary" data-fault="${k}">Inject</button></div><div class="small muted">Guardrail: ${esc(g)}</div><div class="chart"></div><div class="steps"></div><div class="res"></div></div>`).join("");
+  document.querySelectorAll("[data-fault]").forEach((b) => b.onclick = () => runFault(b.dataset.fault, b));
+}
+function runFault(k, btn) {
+  const card = $("#f-" + k);
+  card.querySelector(".steps").innerHTML = ""; card.querySelector(".res").innerHTML = ""; card.querySelector(".chart").innerHTML = "";
+  return runJob("fault_" + k, {}, { stepsEl: card.querySelector(".steps"), btn, onDone: (r) => {
+    if (!r) return;
+    card.querySelector(".res").innerHTML = `<div class="result ${r.blocked ? "good" : "bad"}">${r.blocked ? "✓ Mitigated automatically" : "✕ NOT mitigated"}: ${esc(r.summary)}</div>
+      <div class="small" style="margin-top:6px">traces: ${r.trace_ids.map((t) => `<span class="trace" data-trace="${t}">${t.slice(0, 12)}…</span>`).join(" ")}</div>`;
+    const ch = card.querySelector(".chart");
+    if (k === "network_dark") lineChart(ch, { title: "eCPM per hour", x: r.series.guarded.map((_, i) => "h" + i), series: [{ name: "guarded", values: r.series.guarded }, { name: "unguarded", values: r.series.unguarded }],
+      markers: [{ i: r.dark_at, label: "admob dark" }], yfmt: (v) => "$" + (+v).toFixed(2) });
+    if (k === "peeking") lineChart(ch, { title: "p-value at each daily peek (A/A test, true effect 0)", x: r.rows.map((x) => "d" + x.day),
+      series: [{ name: "mSPRT always-valid", values: r.rows.map((x) => x.av_p) }, { name: "naive t-test", values: r.rows.map((x) => x.naive_p) }],
+      ref: { y: 0.05, label: "α = 0.05" }, yfmt: (v) => (+v).toFixed(2), yMin: 0, yMax: 1 });
+    if (k === "prompt_injection") ch.innerHTML = tbl(["defence config", "flag level7_hint after", "what fired", "trace"], r.runs.map((x) =>
+      [esc(x.config), x.flag_after === null || x.flag_after === undefined ? '<span class="pill good">untouched</span>' : `<span class="pill crit">${x.flag_after}% of traffic</span>`,
+       esc([...x.l2, ...x.blocks].join(", ") || "nothing"), `<span class="trace" data-trace="${x.trace_id}">${x.trace_id.slice(0, 10)}…</span>`]));
+  } });
+}
+async function runAllFaults(btn) { show("faults"); btn.disabled = true; for (const [k] of FAULTS) await runFault(k, $(`[data-fault="${k}"]`)); btn.disabled = false; }
+$("#runAllFaults").onclick = (e) => runAllFaults(e.target);
+$("#runAllFaults2").onclick = (e) => runAllFaults(e.target);
+
+// ---------------- game
+async function loadFunnel() {
+  try {
+    const d = await api("/api/cc/funnel");
+    $("#funnel").innerHTML = tbl(["level", "v", "by", "target", "fail rate", "pred", "attempts"], d.levels.map((l) =>
+      [l.level_id, l.version, l.created_by === "level_factory" ? '<span class="pill good">factory</span>' : "seed", `${l.target_words}/${l.word_count}`,
+       l.fail_rate === null ? '<span class="muted">no data</span>' : (l.fail_rate > 0.5 ? `<span class="pill crit">${fmt(l.fail_rate * 100, 1)}%</span>` : fmt(l.fail_rate * 100, 1) + "%"),
+       l.predicted_fail_rate === null ? "" : fmt(l.predicted_fail_rate * 100, 0) + "%", fmt(l.attempts, 0)]));
+  } catch (e) { toast(e.message); }
+}
+$("#funnelBtn").onclick = loadFunnel;
+
+// ---------------- SRE
+$("#confBtn").onclick = (e) => { $("#confOut").innerHTML = '<div class="steps"></div>'; runJob("conformance", {}, { btn: e.target, stepsEl: $("#confOut .steps"), onDone: (r) => {
+  const n = r.counts, t = n.A + n.B + n.C;
+  $("#confOut").innerHTML += tbl(["config", "A allowlist", "B spotlight", "C privilege", "blocked", "false alarms"], Object.entries(r.summary).map(([k, v]) =>
+    [`<b>${esc(k)}</b>`, `${v.A}/${n.A}`, `${v.B}/${n.B}`, `${v.C}/${n.C}`, `${v.blocked === t ? '<span class="pill good">' : '<span class="pill">'}${v.blocked}/${t}</span>`, `${v.false_alarms}/${n.K}`]))
+    + `<p class="small muted">${r.seconds}s. Only all_on blocks every category; each single defence covers only its own boundary. That is the ablation result.</p>`;
+} }); };
+async function loadMetrics() {
+  try {
+    const d = await api("/api/cc/metrics");
+    $("#metrics").innerHTML = tbl(["span", "tool", "n", "p50 ms", "p95 ms", "p99 ms", "success", "cost $"], d.metrics.filter((m) => m.n > 0).map((m) =>
+      [esc(m.name), esc(m.tool), m.n, fmt(m.p50_ms), `<b>${fmt(m.p95_ms)}</b>`, fmt(m.p99_ms), fmt(m.success_rate * 100, 1) + "%", fmt(m.cost_usd, 5)]));
+  } catch (e) { toast(e.message); }
+}
+async function loadTraces() {
+  try {
+    const d = await api("/api/cc/traces/recent");
+    $("#traces").innerHTML = tbl(["trace", "root", "agent", "status", "ms"], d.traces.map((t) =>
+      [`<span class="trace" data-trace="${t.trace_id}">${t.trace_id.slice(0, 10)}…</span>`, esc(t.workflow || t.name), esc(t.agent), t.status === "ERROR" ? '<span class="pill crit">error</span>' : '<span class="pill good">ok</span>', fmt(t.duration_ms, 1)]));
+  } catch (e) { toast(e.message); }
+}
+$("#metricsBtn").onclick = loadMetrics; $("#tracesBtn").onclick = loadTraces;
+
+// ---------------- copilot
+$("#scanBtn").onclick = (e) => { $("#scanOut").innerHTML = '<div class="steps"></div>'; runJob("copilot_scan", {}, { btn: e.target, stepsEl: $("#scanOut .steps"), onDone: (r) => {
+  const mx = Math.max(...r.scan.levels.map((l) => l.fail_rate));
+  $("#scanOut").innerHTML += `<h3 style="margin-top:12px">Fail rate by level (active version)</h3>` + bars(r.scan.levels.map((l) => ({ label: `L${l.level_id} v${l.version}${l.robust_z >= 3 ? "  ⚠ z=" + l.robust_z : ""}`, value: l.fail_rate })), { valueFmt: (v) => (v * 100).toFixed(1) + "%", max: mx });
+} }); };
+$("#expBtn").onclick = (e) => {
+  $("#expSteps").innerHTML = ""; $("#expChart").innerHTML = "";
+  const peeks = [];
+  runJob("copilot_experiment", { scenario: $("#scenario").value, human_approval: $("#human").checked }, { btn: e.target, stepsEl: $("#expSteps"), onStep: (s) => {
+    if (!s.peek) return; peeks.push(s.peek);
+    const harmful = $("#scenario").value === "harmful";
+    lineChart($("#expChart"), harmful
+      ? { title: "D1 retention delta (treatment − control) with always-valid 95% CI", x: peeks.map((p) => "day " + p.day), series: [{ name: "D1 delta", values: peeks.map((p) => p.d1_delta) }],
+          band: { lo: peeks.map((p) => p.d1_ci[0]), hi: peeks.map((p) => p.d1_ci[1]), name: "always-valid CI" }, ref: { y: 0, label: "no effect" }, yfmt: (v) => (v * 100).toFixed(1) + "pp" }
+      : { title: "CUPED effect on 7-day completions with always-valid 95% CI", x: peeks.map((p) => "day " + p.day), series: [{ name: "CUPED delta", values: peeks.map((p) => p.delta_cuped) }],
+          band: { lo: peeks.map((p) => p.ci[0]), hi: peeks.map((p) => p.ci[1]), name: "always-valid CI" }, ref: { y: 0, label: "no effect" }, yfmt: (v) => (+v).toFixed(2) });
+  }, onDone: (r) => { if (r && r.cuped) $("#expSteps").appendChild(stepEl({ status: "info", title: `CUPED: variance reduction ${r.cuped.variance_reduction_pct}% (rho ${r.cuped.rho})`, detail: `raw var ${r.cuped.var_raw.toExponential(3)} → CUPED var ${r.cuped.var_cuped.toExponential(3)}; relative lift ${(r.cuped.relative_lift_cuped * 100).toFixed(2)}%` })); loadFunnel(); } });
+};
+
+// ---------------- factory
+$("#goal").oninput = () => $("#goalV").textContent = Math.round($("#goal").value * 100) + "%";
+$("#pushBtn").onclick = (e) => {
+  const rows = []; $("#pushResult").innerHTML = '<div class="steps"></div>'; $("#cands").innerHTML = "";
+  runJob("factory_push", { goal: +$("#goal").value, size: +$("#size").value, time_limit_s: +$("#tl").value, candidates: 24 }, { btn: e.target, stepsEl: $("#pushResult .steps"), onStep: (s) => {
+    if (!s.candidate) return; rows.push(s.candidate);
+    $("#cands").innerHTML = tbl(["grid", "words", "target", "solver proof", "pred fail", "critic", "verdict"], rows.map((c) =>
+      [`<code>${esc(c.grid)}</code>`, c.words, c.target, c.proof ? '<span class="pill good">proved</span>' : '<span class="pill crit">failed</span>', c.pred === null ? "-" : fmt(c.pred * 100, 0) + "%",
+       c.critic ? esc(Object.values(c.critic).join("/")) : "-", c.approve ? '<span class="pill good">approve</span>' : `<span class="small muted">${esc((c.failed || []).join("; ").slice(0, 90))}</span>`]));
+  }, onDone: (r) => {
+    if (r && r.published) {
+      const p = r.published;
+      $("#pushResult").insertAdjacentHTML("afterbegin", `<div class="result good">✓ Level ${p.level_id} is live (<code>${esc(p.grid)}</code>, ${p.target_words} words in ${p.time_limit_s}s, predicted fail ${fmt(p.predicted_fail_rate * 100, 0)}%).
+        <button class="btn" id="playIt">Play it now →</button> <span class="trace" data-trace="${r.trace_id}">trace</span></div>`);
+      $("#playIt").onclick = () => { $("#gameFrame").src = "/game?t=" + Date.now(); show("game"); };
+    }
+  } });
+};
+$("#goldenBtn").onclick = (e) => { $("#goldenOut").innerHTML = "<div class='steps'></div>"; runJob("golden_eval", {}, { btn: e.target, stepsEl: $("#goldenOut .steps"), onDone: (r) => {
+  const c = r.confusion;
+  $("#goldenOut").innerHTML += `<div class="grid g4" style="margin-top:10px">${[["agreement", r.agreement_pct + "%"], ["Cohen's κ", r.cohens_kappa], ["defect recall", r.recall_reject], ["defect precision", r.precision_reject]].map(([k, v]) => `<div class="tile"><div class="l">${k}</div><div class="v">${v}</div></div>`).join("")}</div>` +
+    tbl(["", "critic: reject", "critic: accept"], [["label: defect", c.tp_reject, c.fn_missed_defect], ["label: clean", c.fp_wrongly_rejected, c.tn_accept]]) +
+    `<p class="small muted">Labels are by construction (54 clean + 46 injected defects), not human. Disagreements: ${r.disagreements.map((d) => esc(d.id + " " + d.failed.join("; "))).join(" · ")}</p>`;
+} }); };
+
+// ---------------- ads
+$("#mechBtn").onclick = (e) => { $("#mechOut").innerHTML = "<div class='steps'></div>"; runJob("ad_mechanisms", {}, { btn: e.target, stepsEl: $("#mechOut .steps"), onDone: (r) => {
+  $("#mechOut").innerHTML += `<h3 style="margin-top:12px">eCPM per ad request</h3>` + bars(r.rows.map((x) => ({ label: x.mechanism, value: x.ecpm })), { valueFmt: (v) => "$" + v.toFixed(2) }) +
+    `<div class="scroll">` + tbl(["mechanism", "fill", "eCPM", "latency ms", "p95 ms", "efficiency", "bidder surplus"], r.rows.map((x) => [`<b>${esc(x.mechanism)}</b>`, fmt(x.fill * 100, 1) + "%", "$" + fmt(x.ecpm), fmt(x.lat_mean, 0), fmt(x.lat_p95, 0), fmt(x.efficiency * 100, 1) + "%", "$" + fmt(x.surplus)])) +
+    `</div><p class="small muted">β(v) = v − ∫<sub>r</sub><sup>v</sup> F(x)<sup>N−1</sup>dx / F(v)<sup>N−1</sup>. Matches the closed form (N−1)/N·v to ${r.uniform.max_abs_error.toExponential(1)}; shaded 1st price $${r.revenue_equivalence.first_price_shaded_cpm} vs 2nd price $${r.revenue_equivalence.second_price_cpm} (revenue equivalence, z=${r.revenue_equivalence.z}). The naive waterfall is an upper bound (networks accept any price ≤ value); the strategic waterfall is the fair comparison.</p>`;
+} }); };
+$("#floorBtn").onclick = (e) => { $("#floorOut").innerHTML = "<div class='steps'></div>"; runJob("ad_floor", {}, { btn: e.target, stepsEl: $("#floorOut .steps"), onDone: (r) => {
+  const total = r.posterior.reduce((a, p) => a + p.pulls, 0);
+  $("#floorOut").innerHTML += `<h3 style="margin-top:10px">Share of traffic Thompson sampling gave each floor</h3>` + bars(r.posterior.map((p) => ({ label: `$${p.floor} floor (true $${fmt(r.truth_ecpm_by_floor[p.floor])})`, value: p.pulls / total })), { valueFmt: (v) => (v * 100).toFixed(0) + "%" }) +
+    `<p class="small muted">Floors $0–$6 earn within 0.3% of each other; the real win is never sending traffic to $12–14 floors. Regret $${r.regret_usd} vs $${r.uniform_regret_usd} for uniform.</p>`;
+} }); };
+$("#uaBtn").onclick = (e) => { $("#uaOut").innerHTML = "<div class='steps'></div>"; runJob("ad_ua", {}, { btn: e.target, stepsEl: $("#uaOut .steps"), onDone: (r) => {
+  const t = r.totals;
+  $("#uaOut").innerHTML += `<h3 style="margin-top:10px">D1 ROAS by policy</h3>` + bars([["oracle", t.oracle.roas], ["LinTS bandit", t.lints.roas], ["uniform split", t.uniform.roas]].map(([l, v]) => ({ label: l, value: v })), { valueFmt: (v) => (v * 100).toFixed(2) + "%" }) +
+    tbl(["context", "best channel", "LinTS last-week share on it"], Object.entries(r.last_week_share_on_best).map(([k, v]) => [esc(k), esc(r.best_channel[k]), fmt(v * 100, 0) + "%"])) +
+    `<p class="small muted">D1 LTV per install measured from telemetry; CPI and channel quality are stated assumptions.</p>`;
+} }); };
+
+// ---------------- soma
+$("#somaBtn").onclick = (e) => {
+  $("#somaSteps").innerHTML = ""; $("#somaRecord").innerHTML = "";
+  runJob("soma_case", { scenario: $("#somaScen").value, style: $("#somaStyle").value }, { btn: e.target, stepsEl: $("#somaSteps"), onDone: (r) => {
+    if (!r) return;
+    const ok = (f) => f.truth === null || f.truth === undefined || (Array.isArray(f.truth) && !f.truth.length) ? "" : (JSON.stringify(f.value) === JSON.stringify(f.truth) ? '<span class="pill good">match</span>' : `<span class="pill crit">truth: ${esc(JSON.stringify(f.truth))}</span>`);
+    $("#somaRecord").innerHTML = `<div class="row" style="margin-bottom:6px"><span class="pill ${r.status === "SUBMITTED" ? "good" : "warn"}">${esc(r.status)}</span>${r.submission_id ? `<span class="pill">portal ${esc(r.submission_id)}</span>` : ""}<span class="pill">${r.turns} turns</span>${r.handoff_reasons.length ? `<span class="small">${esc(r.handoff_reasons.join("; "))}</span>` : ""}</div>` +
+      tbl(["field", "value", "confidence", "vs truth", "evidence"], Object.entries(r.fields).map(([k, f]) => [
+        `<code>${esc(k)}</code>`, esc(Array.isArray(f.value) ? f.value.join(", ") : f.value ?? "-"),
+        `<span class="conf"><b style="width:${Math.round(f.confidence * 100)}%"></b></span>${fmt(f.confidence, 2)}${f.status !== "confident" ? ` <span class="small muted">${esc(f.status)}</span>` : ""}`,
+        ok(f), f.quote ? `<span class="small">${esc(f.channel)}: “${esc(f.quote.slice(0, 80))}”</span>` : ""]));
+  } });
+};
+
+$("#resetBtn").onclick = (e) => runJob("reset_demo", {}, { btn: e.target, onDone: (r) => { toast_ok("Demo state reset: level 7 is back to its seeded 63%-fail version."); loadOverview(); } });
+function toast_ok(m) { const t = $("#toast"); t.style.background = "var(--good)"; toast(m); setTimeout(() => t.style.background = "", 4000); }
+buildFaults(); loadOverview();
+const h = location.hash.slice(1); if (h && $("#s-" + h)) show(h);
+</script>
+</body>
+</html>

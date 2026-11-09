@@ -1,0 +1,70 @@
+{
+  "incident_1": {
+    "before_fix": {
+      "trace_id": "58a0ddafff611550c1b09156ef67d395",
+      "decision": "L3_privilege:write_arg_from_untrusted",
+      "detail": "'case_22c52117da'"
+    },
+    "after_fix": {
+      "trace_id": "d5b28c8a2f0d7a72b85380bf31c1e815",
+      "followups_sent": 1
+    }
+  },
+  "incident_2": {
+    "events": [
+      [
+        35,
+        "rollback",
+        ""
+      ],
+      [
+        44,
+        "quarantine",
+        "admob"
+      ],
+      [
+        50,
+        "probe",
+        "admob"
+      ],
+      [
+        57,
+        "probe",
+        "admob"
+      ],
+      [
+        65,
+        "escalate",
+        "no config change in the last 8h: external cause"
+      ]
+    ],
+    "quarantine_traces": [
+      "01496a387b6d015b9898892a00a762fe",
+      "072a1ae09463a522a51a96e771eaf69b"
+    ],
+    "rollback_traces": [
+      "442d19f7bfac2bb824c45e2e881135a3"
+    ],
+    "false_quarantines": []
+  },
+  "incident_3": {
+    "spans_produced": 6000,
+    "spans_in_db": 6000,
+    "stats": {
+      "exported": 6000,
+      "dropped": 0,
+      "flush_failures": 0,
+      "last_error": "",
+      "spilled": 0,
+      "unspooled": 0
+    }
+  },
+  "exporter_stats": {
+    "exported": 159,
+    "dropped": 0,
+    "flush_failures": 0,
+    "last_error": "",
+    "spilled": 0,
+    "unspooled": 0
+  }
+}
