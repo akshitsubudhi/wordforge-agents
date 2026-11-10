@@ -125,11 +125,11 @@ def test_human_gate_approve_then_auto_rollback(client):
     assert any("AUTO-ROLLBACK" in s["title"] for s in steps)
 
 
-def test_scan_soma_ads_conformance_and_reset(client):
+def test_scan_intake_ads_conformance_and_reset(client):
     scan, _ = wait_job(client, "copilot_scan")
     assert scan["scan"]["anomalies"][0]["level_id"] == 7
-    soma, _ = wait_job(client, "soma_case", {"scenario": "high_risk"})
-    assert soma["status"] == "HUMAN_HANDOFF" and soma["expect_handoff"]
+    intake, _ = wait_job(client, "intake_case", {"scenario": "high_risk"})
+    assert intake["status"] == "HUMAN_HANDOFF" and intake["expect_handoff"]
     mech, _ = wait_job(client, "ad_mechanisms", {"impressions": 4000})
     by = {r["mechanism"]: r for r in mech["rows"]}
     assert by["hb_second"]["ecpm"] > by["waterfall_strategic"]["ecpm"]

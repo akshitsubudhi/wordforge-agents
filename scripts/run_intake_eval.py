@@ -1,14 +1,14 @@
 """
 ================================================================================
-BLOCK: Soma Intake Evaluation Harness (50 submissions, end to end)
+BLOCK: Insurance Intake Evaluation Harness (50 submissions, end to end)
 --------------------------------------------------------------------------------
 Role & contracts
-  Drives every synthetic case (agents/soma_intake/synthetic.py) through the
+  Drives every synthetic case (agents/insurance_intake/synthetic.py) through the
   REAL pipeline: provider payload -> normaliser -> IntakeEngine (harness
   tools, L1/L2/L3 guards, SQLite event history) -> customer follow-ups ->
   mock carrier portal (HTML form filled by PortalClient) or human handoff.
   Prints a Markdown scorecard and writes it to --out (default
-  data/reports/soma_eval.md).
+  data/reports/intake_eval.md).
 
 Key engineering mechanism
   * Each simulated DAY uses a brand-new IntakeEngine on the same SQLite
@@ -31,7 +31,7 @@ Failure modes & 1-step mitigation
     the success thresholds (F1 >= 0.90, fill >= 0.90, handoff precision
     >= 0.90, exactly-once ok) are not met.
 ================================================================================
-Usage: python scripts/run_soma_eval.py [--cases 50] [--out path.md] [--json path.json]
+Usage: python scripts/run_intake_eval.py [--cases 50] [--out path.md] [--json path.json]
 """
 from __future__ import annotations
 
@@ -47,10 +47,10 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agents.soma_intake.extractor import CONFIDENCE_GATE, FIELDS, REQUIRED, SPEC  # noqa: E402
-from agents.soma_intake.portal_automation import PortalClient, get_submission  # noqa: E402
-from agents.soma_intake.synthetic import TWILIO_AUTH_TOKEN, Case, CustomerSimulator, build_cases  # noqa: E402
-from agents.soma_intake.workflow import (  # noqa: E402
+from agents.insurance_intake.extractor import CONFIDENCE_GATE, FIELDS, REQUIRED, SPEC  # noqa: E402
+from agents.insurance_intake.portal_automation import PortalClient, get_submission  # noqa: E402
+from agents.insurance_intake.synthetic import TWILIO_AUTH_TOKEN, Case, CustomerSimulator, build_cases  # noqa: E402
+from agents.insurance_intake.workflow import (  # noqa: E402
     TERMINAL, EventStore, IntakeEngine, fold, normalize_email, normalize_sms, normalize_voice,
 )
 from core.harness.telemetry import InMemoryExporter, Tracer  # noqa: E402
@@ -146,11 +146,11 @@ def evaluate(n_cases: int = 50, seed: int = 2026, workdir: Path | None = None, s
 
 def _evaluate(n_cases: int, seed: int, workdir: Path | None, style: str) -> dict:
     t0 = time.perf_counter()
-    workdir = workdir or Path(tempfile.mkdtemp(prefix="soma_eval_"))
+    workdir = workdir or Path(tempfile.mkdtemp(prefix="intake_eval_"))
     os.environ["LIVEOPS_DATA_DIR"] = str(workdir)          # portal + event store live in the eval sandbox
-    store = EventStore(workdir / "soma_intake.sqlite")
+    store = EventStore(workdir / "insurance_intake.sqlite")
     mem = InMemoryExporter()
-    tracer = Tracer(mem, service_name="soma-eval")
+    tracer = Tracer(mem, service_name="intake-eval")
     cases = build_cases(n_cases, seed, style=style)
     crash_plan = {c.case_no: ("portal" if i % 2 == 0 else "followup")
                   for i, c in enumerate([c for c in cases if not c.expect_handoff][:6])}
@@ -255,7 +255,7 @@ def table(headers, rows) -> str:
 
 def render(r: dict) -> str:
     e, p, h, d = r["extraction"], r["portal_fill"], r["handoff"], r["durability"]
-    md = ["# Soma Intake Evaluation", "", f"_{r['n']} synthetic submissions, {r['seconds']}s, deterministic extractor (no LLM)._", "",
+    md = ["# Insurance Intake Evaluation", "", f"_{r['n']} synthetic submissions, {r['seconds']}s, deterministic extractor (no LLM)._", "",
           "## Headline metrics", "",
           table(["metric", "value"], [
               ["Extraction F1 (micro, 24 ACORD fields)", f"{100 * e['f1']:.1f}%  (P {100 * e['precision']:.1f}% / R {100 * e['recall']:.1f}%)"],
@@ -317,7 +317,7 @@ def render_generalisation(dev: dict, ho: dict) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Soma intake 50-submission evaluation")
+    ap = argparse.ArgumentParser(description="Insurance intake 50-submission evaluation")
     ap.add_argument("--cases", type=int, default=50)
     ap.add_argument("--seed", type=int, default=2026)
     ap.add_argument("--out", type=Path, default=None)
@@ -330,7 +330,7 @@ def main() -> int:
     ho = evaluate(a.cases, a.seed, style="heldout")
     md = render(r) + "\n" + render_generalisation(r, ho)
     print(md)
-    out = a.out or real_data / "reports" / "soma_eval.md"
+    out = a.out or real_data / "reports" / "intake_eval.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(md)
     slim = lambda x: {k: v for k, v in x.items() if k not in ("example",)}

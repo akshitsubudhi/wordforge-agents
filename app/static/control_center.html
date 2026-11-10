@@ -161,7 +161,7 @@ section { display: none; } section.show { display: block; }
   <button data-s="copilot">⚗ LiveOps copilot <span class="tag">P1</span></button>
   <button data-s="factory">⚙ Level factory <span class="tag">P2</span></button>
   <button data-s="ads">$ Ad economy <span class="tag">P3</span></button>
-  <button data-s="soma">✉ Soma intake <span class="tag">P5</span></button>
+  <button data-s="intake">✉ Insurance intake <span class="tag">P5</span></button>
   <div class="sep">View</div>
   <button id="themeBtn">◐ Toggle theme</button>
 </nav>
@@ -268,20 +268,20 @@ section { display: none; } section.show { display: block; }
   </div>
 </section>
 
-<!-- ======================= SOMA ======================= -->
-<section id="s-soma">
-  <h1>Soma AI multi-channel intake</h1>
+<!-- ======================= INSURANCE INTAKE ======================= -->
+<section id="s-intake">
+  <h1>Multi-channel insurance intake</h1>
   <p class="sub">Project 5: e-mail → Twilio SMS → voice call over three days; a fresh engine process each day replays the SQLite event history; ACORD 125/126 extraction with confidence and provenance; confidence-gated human handoff; carrier portal auto-fill.</p>
   <div class="card">
     <div class="row">
-      <label>Customer <select id="somaScen"><option value="clean">Clean</option><option value="needs_followup">Needs follow-up</option><option value="conflict_corrected">Corrects themselves</option><option value="high_risk">High-risk business</option><option value="ambiguous">Never gives revenue</option></select></label>
-      <label>Phrasing <select id="somaStyle"><option value="dev">development</option><option value="heldout">held-out (unseen)</option></select></label>
-      <button class="btn primary" id="somaBtn">Run intake</button>
+      <label>Customer <select id="intakeScen"><option value="clean">Clean</option><option value="needs_followup">Needs follow-up</option><option value="conflict_corrected">Corrects themselves</option><option value="high_risk">High-risk business</option><option value="ambiguous">Never gives revenue</option></select></label>
+      <label>Phrasing <select id="intakeStyle"><option value="dev">development</option><option value="heldout">held-out (unseen)</option></select></label>
+      <button class="btn primary" id="intakeBtn">Run intake</button>
       <a class="small" href="/mock-carrier-portal" target="_blank" rel="noopener">open the carrier portal ↗</a>
     </div>
     <div class="grid g2" style="margin-top:8px">
-      <div><h3>Conversation &amp; decisions</h3><div id="somaSteps" class="steps"></div></div>
-      <div><h3>ACORD record</h3><div id="somaRecord" class="scroll"></div></div>
+      <div><h3>Conversation &amp; decisions</h3><div id="intakeSteps" class="steps"></div></div>
+      <div><h3>ACORD record</h3><div id="intakeRecord" class="scroll"></div></div>
     </div>
   </div>
 </section>
@@ -440,8 +440,8 @@ const BLOCKS = [
   ["Solver", "agents/level_factory/solver.py", "Trie+DFS proof re-checked by the referee; unsolvable → can't publish"],
   ["Critic + release gate", "agents/level_factory/critic_and_eval.py", "publish only with proof + critic in ledger; live spike → retire"],
   ["Ad ops agent", "agents/ad_economy/bandit_agent.py", "EWMA → quarantine / guarded LKG rollback / escalate"],
-  ["Intake workflow", "agents/soma_intake/workflow.py", "event history replay; exactly-once activities; conf < 0.80 → human"],
-  ["Carrier portal bot", "agents/soma_intake/portal_automation.py", "label-mapped filling; idempotent client_ref; field errors → human"],
+  ["Intake workflow", "agents/insurance_intake/workflow.py", "event history replay; exactly-once activities; conf < 0.80 → human"],
+  ["Carrier portal bot", "agents/insurance_intake/portal_automation.py", "label-mapped filling; idempotent client_ref; field errors → human"],
 ];
 function showLLM(st) {
   const el = $("#llmBanner");
@@ -601,13 +601,13 @@ $("#uaBtn").onclick = (e) => { $("#uaOut").innerHTML = "<div class='steps'></div
     `<p class="small muted">D1 LTV per install measured from telemetry; CPI and channel quality are stated assumptions.</p>`;
 } }); };
 
-// ---------------- soma
-$("#somaBtn").onclick = (e) => {
-  $("#somaSteps").innerHTML = ""; $("#somaRecord").innerHTML = "";
-  runJob("soma_case", { scenario: $("#somaScen").value, style: $("#somaStyle").value }, { btn: e.target, stepsEl: $("#somaSteps"), onDone: (r) => {
+// ---------------- insurance intake
+$("#intakeBtn").onclick = (e) => {
+  $("#intakeSteps").innerHTML = ""; $("#intakeRecord").innerHTML = "";
+  runJob("intake_case", { scenario: $("#intakeScen").value, style: $("#intakeStyle").value }, { btn: e.target, stepsEl: $("#intakeSteps"), onDone: (r) => {
     if (!r) return;
     const ok = (f) => f.truth === null || f.truth === undefined || (Array.isArray(f.truth) && !f.truth.length) ? "" : (JSON.stringify(f.value) === JSON.stringify(f.truth) ? '<span class="pill good">match</span>' : `<span class="pill crit">truth: ${esc(JSON.stringify(f.truth))}</span>`);
-    $("#somaRecord").innerHTML = `<div class="row" style="margin-bottom:6px"><span class="pill ${r.status === "SUBMITTED" ? "good" : "warn"}">${esc(r.status)}</span>${r.submission_id ? `<span class="pill">portal ${esc(r.submission_id)}</span>` : ""}<span class="pill">${r.turns} turns</span>${r.handoff_reasons.length ? `<span class="small">${esc(r.handoff_reasons.join("; "))}</span>` : ""}</div>` +
+    $("#intakeRecord").innerHTML = `<div class="row" style="margin-bottom:6px"><span class="pill ${r.status === "SUBMITTED" ? "good" : "warn"}">${esc(r.status)}</span>${r.submission_id ? `<span class="pill">portal ${esc(r.submission_id)}</span>` : ""}<span class="pill">${r.turns} turns</span>${r.handoff_reasons.length ? `<span class="small">${esc(r.handoff_reasons.join("; "))}</span>` : ""}</div>` +
       tbl(["field", "value", "confidence", "vs truth", "evidence"], Object.entries(r.fields).map(([k, f]) => [
         `<code>${esc(k)}</code>`, esc(Array.isArray(f.value) ? f.value.join(", ") : f.value ?? "-"),
         `<span class="conf"><b style="width:${Math.round(f.confidence * 100)}%"></b></span>${fmt(f.confidence, 2)}${f.status !== "confident" ? ` <span class="small muted">${esc(f.status)}</span>` : ""}`,

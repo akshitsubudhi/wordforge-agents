@@ -34,7 +34,7 @@ on an exported API key or on what ran earlier. The only machine-dependent row is
 | **CUPED variance reduction** | **7.1%** | ρ = 0.26 between week-1 and week-2 completions in the seeded cohort, so ≈ρ² as theory predicts (8,429 → 7,774 users needed). It's modest because the seeder front-loads play; a ρ = 0.77 synthetic check gives 60%. |
 | **D1 retention** | **−4.7pp harm caught on day 2** | A deliberately harmful variant was auto-rolled back when its always-valid CI fell below 0. The shipped variant's D1 was +0.9pp with a CI spanning 0, so **no lift is claimed**. |
 | **ARPDAU bandit lift** | **+37.4%** | The guarded ad-ops agent vs the same 72h incident timeline unguarded. The Thompson-sampled floor *alone* adds only +0.5% over a $2 default, and the UA bandit improves ROAS by +15.4% vs a uniform split. |
-| **Soma ACORD extraction F1** | **99.8%** dev / **91.7%** held-out | 50 synthetic multi-channel submissions. With held-out phrasing only 8/38 reach the portal: the gate sends 25 to humans and 5 slip through with a wrong headcount. See [Limitations](#limitations). |
+| **Intake ACORD extraction F1** | **99.8%** dev / **91.7%** held-out | 50 synthetic multi-channel submissions. With held-out phrasing only 8/38 reach the portal: the gate sends 25 to humans and 5 slip through with a wrong headcount. See [Limitations](#limitations). |
 
 ![Control Center: injected faults, each auto-mitigated](docs/control_center_faults.png)
 
@@ -62,7 +62,7 @@ flowchart LR
     T --> C[P1 LiveOps Copilot]
     T --> F[P2 Level Factory]
     T --> A[P3 Ad economy agent]
-    S[Email / Twilio SMS / Voice] --> I[P5 Soma intake]
+    S[Email / Twilio SMS / Voice] --> I[P5 Insurance intake]
     C -->|candidate version + ≤20% flag| G
     F -->|release-gated publish| G
     I -->|label-mapped form fill| P[Mock carrier portal]
@@ -83,14 +83,14 @@ Each block: how it's built, and the one-line hook that stops it failing.
 | **Harness** `core/harness/runner.py` | Fixed per-call pipeline, plus a no-LLM `workflow()` mode for deterministic steps | Unknown tool or extra field: a non-switchable checkpoint blocks it |
 | **Defences** `core/harness/redteam_guard.py` | L1: allowlist plus argument rules (SQL parser, realpath, exact domains, 20% cap). L2: normalise, decode, redact, nonce boundaries. L3: READ_ONLY tokens, taint → approval, copied-argument block, DLP, output filter | Conformance gate in CI: 25/25 blocked, 0/10 false alarms |
 | **Resilience** `core/harness/resilience.py` | Full-jitter backoff, circuit breaker, worst-case pre-call cost check, `python -I -S` sandbox with rlimits and an audit hook | Spend can never exceed the cap (`BudgetExceededError` is raised before the call); retries happen only on idempotent tools |
-| **LLM layer** `core/harness/llm.py`, `runner.guarded_completion` | `get_llm()` picks Anthropic / OpenAI / mock from the environment; every model call (agent loop, level generator, critic, Soma extractor) goes through one function: budget pre-check → breaker → jittered retry → priced `llm.call` span | Outage or rate limit: retries, then the breaker serves the mock. Bad key or no credits (HTTP 429 `insufficient_quota`): never retried, provider calls pause for 5 minutes, agents continue on the deterministic fallback, and `GET /api/llm/status` plus a Control Center banner say what to fix |
+| **LLM layer** `core/harness/llm.py`, `runner.guarded_completion` | `get_llm()` picks Anthropic / OpenAI / mock from the environment; every model call (agent loop, level generator, critic, intake extractor) goes through one function: budget pre-check → breaker → jittered retry → priced `llm.call` span | Outage or rate limit: retries, then the breaker serves the mock. Bad key or no credits (HTTP 429 `insufficient_quota`): never retried, provider calls pause for 5 minutes, agents continue on the deterministic fallback, and `GET /api/llm/status` plus a Control Center banner say what to fix |
 | **Telemetry spans** `core/harness/telemetry.py` | contextvars nesting; batched exporter; every connection to `traces.duckdb` goes through one serialised, retrying `traces_connection()`; OTLP/JSON export | A flush and a dashboard read can no longer collide; a failed final flush spills to a spool file that the next run ingests (see the postmortem) |
 | **Stats engine** `agents/liveops_copilot/stats_engine.py` | Fleiss / CUPED-adjusted power, CUPED, mSPRT | Always-valid inference: peeking cannot inflate false positives |
 | **Copilot** `agents/liveops_copilot/agent.py` | Robust-z scan → power → factory variant → flag → daily replayed peeks | 20% cap enforced 3×; human gate; automatic rollback when the guardrail CI falls below 0 |
 | **Solver** `agents/level_factory/solver.py` | Trie-pruned DFS proof; every witness path re-checked by the referee | No proof means no publish |
 | **Difficulty + critic** `difficulty_model.py`, `critic_and_eval.py` | Poisson-binomial player model calibrated on telemetry; 4 rubrics including an offensive-word trie | Release gate requires proof + critic in the ledger; a live spike retires the level |
 | **Ad economy** `agents/ad_economy/` | BNE-shaded auctions; NIG Thompson sampling; EWMA detectors; LinTS UA allocator | A dark network rolls any floor on trial back to the baseline config and is quarantined; a revenue alarm rolls back only after a recent change; otherwise escalate |
-| **Soma intake** `agents/soma_intake/` | Channel normalisers (Twilio HMAC); event-sourced SQLite; rule extractor with provenance; label-driven portal bot | Replay after a crash, exactly-once; confidence < 0.80 after 3 follow-ups goes to a human |
+| **Insurance intake** `agents/insurance_intake/` | Channel normalisers (Twilio HMAC); event-sourced SQLite; rule extractor with provenance; label-driven portal bot | Replay after a crash, exactly-once; confidence < 0.80 after 3 follow-ups goes to a human |
 | **Control Center** `app/dashboard.py`, `app/static/control_center.html` | Single-worker job queue in the server process; polled step logs; human-approval broker | Approvals fail closed after 120 s; jobs never contend for DuckDB |
 
 Deeper diagrams and per-phase failure matrices are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -172,9 +172,9 @@ boards (`docs/scorecard.json → level_taste`).
 These are stated plainly, because an evaluator will find them anyway:
 
 - **Synthetic data everywhere.** Cookie Cats marginals are exact, but the event cohort, experiment
-  traffic, ad demand and the 50 Soma customers are simulated. Every simulator is seeded and every
+  traffic, ad demand and the 50 insurance-intake customers are simulated. Every simulator is seeded and every
   assumption is labelled in its scorecard.
-- **Soma generalisation.** Extraction F1 falls from 99.8% to 91.7% on held-out phrasing.
+- **Intake generalisation.** Extraction F1 falls from 99.8% to 91.7% on held-out phrasing.
   - The confidence gate fails safe 25 times, but **5 cases submit a wrong full-time headcount at
     confidence ≥ 0.80**.
   - The root causes are documented and deliberately not tuned against the held-out set. The next step
@@ -186,7 +186,7 @@ These are stated plainly, because an evaluator will find them anyway:
   `api.openai.com` were made through the harness and the running Control Center. That account had no credits, so
   every answer was HTTP 429 `insufficient_quota`: the jobs finished on the heuristic, the `llm.call` spans carry
   `error_class=quota_exhausted`, and the banner appeared. Prompt quality and real-model latency are unmeasured.
-  With a key set, the Soma intake server sends customer message text to the provider for the optional extraction
+  With a key set, the Insurance intake server sends customer message text to the provider for the optional extraction
   pass; set `LLM_PROVIDER=mock` to keep it local.
 - **The mSPRT mixing variance τ** is set from the observed control mean (τ = MDE × control mean) rather than fixed
   before the experiment. The false-positive rates quoted above were measured with a fixed τ; the data-dependent

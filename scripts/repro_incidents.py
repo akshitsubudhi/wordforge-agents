@@ -6,7 +6,7 @@ Role & contracts
   Re-creates the failures from the postmortem against the current code and
   exports their spans to data/traces.duckdb, writing the trace ids to
   docs/incident_traces.json:
-    incident 1  L3 copied-argument rule blocks every Soma follow-up when the
+    incident 1  L3 copied-argument rule blocks every intake follow-up when the
                 engine's own identifiers are not declared trusted (the
                 original bug), next to the fixed path.
     incident 2  ad-ops quarantine / rollback / escalation decisions on the
@@ -51,8 +51,8 @@ class Tee:
 
 
 def incident_1(tracer: Tracer, mem: InMemoryExporter) -> dict:
-    from agents.soma_intake.synthetic import build_cases
-    from agents.soma_intake.workflow import EventStore, IntakeEngine, normalize_email
+    from agents.insurance_intake.synthetic import build_cases
+    from agents.insurance_intake.workflow import EventStore, IntakeEngine, normalize_email
 
     with tempfile.TemporaryDirectory() as tmp:
         store = EventStore(Path(tmp) / "s.sqlite")

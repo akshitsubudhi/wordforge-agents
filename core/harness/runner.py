@@ -8,7 +8,7 @@ Role & contracts
           ToolRegistry, DefenseConfig, budget limits, Tracer, Approver.
   Output: RunResult - final text (post output-filter), every tool call with
           its guard decision, status, cost, tokens, trace_id.
-  Used by: LiveOps Copilot, Level Factory, Ad Economy, Soma Intake (Phases
+  Used by: LiveOps Copilot, Level Factory, Ad Economy, Insurance Intake (Phases
           2-3) and the red-team eval - one runtime, one set of guarantees.
 
 Key engineering mechanism (per tool call, in this exact order)
@@ -76,7 +76,7 @@ def guarded_completion(llm: LLMClient, messages: list[Message], tools: list[dict
                        retry_policy: RetryPolicy = RetryPolicy(), rng: random.Random | None = None, sleep=time.sleep,
                        purpose: str = ""):
     """THE one way this repo talks to a model (agent loop AND one-shot calls such as the level generator, the
-    critic's second opinion and the Soma extractor). In order:
+    critic's second opinion and the intake extractor). In order:
       1 BudgetGuard.precheck_llm  worst-case cost/tokens of THIS call must still fit -> BudgetExceeded, no spend
       2 circuit breaker           llm:<model>
       3 retry w/ full jitter      TransientLLMError only (complete() is a pure read)

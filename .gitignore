@@ -10,5 +10,5 @@ data/cookie_cats.csv
 data/*.sqlite
 data/*.sqlite-wal
 data/*.sqlite-shm
-data/cc_soma/
+data/cc_intake/
 data/*.spool.jsonl

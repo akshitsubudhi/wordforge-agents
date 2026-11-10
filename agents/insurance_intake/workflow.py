@@ -1,6 +1,6 @@
 """
 ================================================================================
-BLOCK: Soma Multi-Channel Intake Workflow (durable, replayable, gated)
+BLOCK: Multi-Channel Insurance Intake Workflow (durable, replayable, gated)
 --------------------------------------------------------------------------------
 Role & contracts
   Ingestion normalisers turn provider payloads into InboundMessage:
@@ -18,7 +18,7 @@ Role & contracts
   replays the case exactly where it stopped (a 3-day Email -> SMS -> Voice
   thread survives restarts).
   Downstream: harness tools (send_followup, fill_portal, request_handoff)
-  -> outbound gateway / mock carrier portal; /soma/* FastAPI routes.
+  -> outbound gateway / mock carrier portal; /intake/* FastAPI routes.
 
 Key engineering mechanism
   * Event history + idempotency keys: provider message ids dedupe redelivery
@@ -45,7 +45,7 @@ Failure modes & 1-step mitigation
   * Crash between "portal submit" and "record result" -> replay re-submits
     with the same client_ref; the portal returns the original submission id.
   * Low confidence / high risk -> HUMAN_HANDOFF with machine-readable reasons
-    and the full provenance trail (GET /soma/cases/{id}).
+    and the full provenance trail (GET /intake/cases/{id}).
   * Forged SMS webhook -> signature mismatch -> rejected (403) before any
     state change.
 ================================================================================
@@ -73,10 +73,10 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import Field
 
-from agents.soma_intake.extractor import (
+from agents.insurance_intake.extractor import (
     FIELDS, REQUIRED, SPEC, CaseExtraction, InboundMessage, Sentence, extract, split_sentences,
 )
-from agents.soma_intake.portal_automation import PORTAL_URL, PortalClient
+from agents.insurance_intake.portal_automation import PORTAL_URL, PortalClient
 from core.config import get_settings
 from core.harness.llm import MockLLM, is_real_llm
 from core.harness.redteam_guard import READ_WRITE, AgentPolicy, ApprovalRequest, DefenseConfig
@@ -350,7 +350,7 @@ INTAKE_TOOLS = frozenset({"extract_case", "send_followup", "fill_portal", "reque
 
 
 class IntakeEngine:
-    SYSTEM = ("You are Soma's commercial insurance intake agent. Collect ACORD 125/126 facts across e-mail, SMS and "
+    SYSTEM = ("You are a commercial insurance intake agent. Collect ACORD 125/126 facts across e-mail, SMS and "
               "voice, ask concise follow-ups, hand off to a human when confidence is low or risk is high, and submit "
               "complete applications to the carrier portal.")
 
@@ -360,7 +360,7 @@ class IntakeEngine:
         self.crash_hook = crash_hook
         self._ext_cache: dict[str, CaseExtraction] = {}
         self.runner = AgentRunner(
-            AgentSpec("soma_intake", self.SYSTEM,
+            AgentSpec("insurance_intake", self.SYSTEM,
                       AgentPolicy(INTAKE_TOOLS, get_settings().data_dir, allowed_url_hosts=frozenset({"carrier.mock"}))),
             self._registry(), MockLLM("compliant"), defenses=defenses, tracer=tracer or default_tracer(),
             approver=self._policy)
@@ -559,7 +559,7 @@ class IntakeEngine:
 
 
 # ============================================================================ HTTP surface
-router = APIRouter(prefix="/soma", tags=["soma-intake"])
+router = APIRouter(prefix="/intake", tags=["insurance-intake"])
 _engine: IntakeEngine | None = None
 _engine_lock = threading.Lock()
 
@@ -570,7 +570,7 @@ def engine() -> IntakeEngine:
         if _engine is None:
             from core.harness.llm import get_llm  # real provider when a key is set, deterministic mock otherwise
 
-            _engine = IntakeEngine(EventStore(get_settings().data_dir / "soma_intake.sqlite"), llm=get_llm())
+            _engine = IntakeEngine(EventStore(get_settings().data_dir / "insurance_intake.sqlite"), llm=get_llm())
         return _engine
 
 

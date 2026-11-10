@@ -13,7 +13,7 @@ Role & contracts
                  REAL human approval gate (the job pauses for your click)
     Level Factory  "Generate, Verify & Push Level to Live Game"
     Ad Economy   mechanism comparison, Thompson floors, UA bandit
-    Soma Intake  one synthetic customer, end to end, day by day
+    Insurance Intake  one synthetic customer, end to end, day by day
     Fault drills five injected production failures + the guardrail that
                  catches each (app/fault_drills.py)
   Everything runs IN the server process on the server's own DuckDB writer, so
@@ -377,14 +377,14 @@ def register_handlers(app) -> None:
         return ua
     H["ad_ua"] = ad_ua
 
-    def soma(job, log):
-        from agents.soma_intake.synthetic import build_cases
-        from agents.soma_intake.workflow import EventStore
-        from scripts.run_soma_eval import run_case
+    def intake_case(job, log):
+        from agents.insurance_intake.synthetic import build_cases
+        from agents.insurance_intake.workflow import EventStore
+        from scripts.run_intake_eval import run_case
 
         scen, style = job.params.get("scenario", "clean"), job.params.get("style", "dev")
         case = next(c for c in build_cases(50, style=style) if c.scenario == scen)
-        store_dir = get_settings().data_dir / "cc_soma"
+        store_dir = get_settings().data_dir / "cc_intake"
         store_dir.mkdir(parents=True, exist_ok=True)
         store = EventStore(store_dir / f"{job.id}.sqlite")
         log({"status": "info", "title": f"Customer: {case.truth['contact_name']} - {case.truth['applicant_name']} ({scen}, {style} phrasing)",
@@ -420,12 +420,12 @@ def register_handlers(app) -> None:
         present = sum(1 for v in fields.values() if v["truth"] not in (None, []))
         log({"status": "ok" if st.status == "SUBMITTED" else "guard", "title": f"FINAL: {st.status}",
              "detail": f"{correct}/{present} fields match ground truth; {st.turns_in + st.turns_out} turns"})
-        from agents.soma_intake.portal_automation import get_submission
+        from agents.insurance_intake.portal_automation import get_submission
 
         return {"case": case.case_no, "scenario": scen, "style": style, "status": st.status, "fields": fields,
                 "handoff_reasons": st.handoff_reasons, "submission": get_submission(st.submission_id) if st.submission_id else None,
                 "submission_id": st.submission_id, "turns": st.turns_in + st.turns_out, "expect_handoff": case.expect_handoff}
-    H["soma_case"] = soma
+    H["intake_case"] = intake_case
 
     def reset_demo(job, log):
         from scripts.verify_phase2 import reset_phase2

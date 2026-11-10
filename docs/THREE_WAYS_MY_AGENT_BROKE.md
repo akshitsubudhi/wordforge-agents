@@ -31,12 +31,12 @@ the strongest honest statement available. One related failure class is still ope
 ## Incident 1: the guardrail that silenced the agent
 
 **Component:** L3 `PrivilegeGate`, copied-argument rule (`core/harness/redteam_guard.py`), as used by
-the Soma intake engine.
+the insurance intake engine.
 **Severity, had it shipped:** high. Every insurance intake stalls silently.
 
 ### Symptom
 
-The first end-to-end run of the Soma workflow processed 8 cases. **All 8 ended in `COLLECTING` with 0
+The first end-to-end run of the intake workflow processed 8 cases. **All 8 ended in `COLLECTING` with 0
 follow-ups sent**, even though every case had gaps. Nothing crashed and nothing was logged as an error:
 the cases just stopped.
 
@@ -215,7 +215,7 @@ drills**) or with `make faults`. Trace IDs are from the run in `docs/fault_drill
 
 ## 5. Still open
 
-- **Soma extraction on unseen phrasing.** With held-out wording, 5 of 38 cases that should submit reach
+- **Intake extraction on unseen phrasing.** With held-out wording, 5 of 38 cases that should submit reach
   the carrier portal **with a wrong full-time headcount at confidence ≥ 0.80**. This is the unsafe
   failure mode: the confidence gate didn't catch it.
 - **Root cause:** narrow rule vocabulary ("12 people full time" doesn't match), plus context-based

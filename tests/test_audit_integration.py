@@ -39,7 +39,7 @@ import pytest
 import core.harness.llm as llm_mod
 from agents.level_factory.critic_and_eval import LevelFactory
 from agents.liveops_copilot.agent import LiveOpsCopilot
-from agents.soma_intake.extractor import llm_candidates
+from agents.insurance_intake.extractor import llm_candidates
 from core.db import EVENT_COLUMNS, DatabaseLockedError, TelemetryDB, open_rw
 from core.harness.llm import (
     AnthropicClient, FallbackLLM, Message, MockLLM, OpenAIClient, PermanentLLMError, TransientLLMError, get_llm,
@@ -421,7 +421,7 @@ def test_level_factory_survives_a_dead_or_broke_provider_and_a_spent_budget(data
         db.close()
 
 
-def test_copilot_summary_and_soma_extractor_use_the_harness(data_dir, lex, monkeypatch, tmp_path):
+def test_copilot_summary_and_intake_extractor_use_the_harness(data_dir, lex, monkeypatch, tmp_path):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     api = FakeProvider([anthropic_text("- Level 7 fails 63% of attempts\n- variant shipped", 500, 60)])
     monkeypatch.setattr(llm_mod, "_http_post", api)
@@ -438,7 +438,7 @@ def test_copilot_summary_and_soma_extractor_use_the_harness(data_dir, lex, monke
     finally:
         db.close()
     # extractor: the model's proposal is kept only when its quote is verbatim in a customer message
-    from agents.soma_intake.workflow import normalize_email
+    from agents.insurance_intake.workflow import normalize_email
 
     m = normalize_email("From: owner@acme.test\nSubject: quote\nMessage-ID: <a1@x>\n\nWe are Acme Bakery LLC with 12 full time staff.")
     api = FakeProvider([anthropic_text(json.dumps({"applicant_name": {"value": "Acme Bakery LLC", "quote": "Acme Bakery LLC"},

@@ -12,7 +12,7 @@ Role & contracts
                        numbers spoken as words)
   plus a CustomerSimulator that answers the agent's follow-up questions on
   the channel the customer uses that day.
-  Consumers: scripts/run_soma_eval.py and tests.
+  Consumers: scripts/run_intake_eval.py and tests.
 
 Key engineering mechanism
   Scenario mix (seeded): clean 18, needs_followup 14 (required facts held
@@ -42,10 +42,10 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from email.utils import format_datetime
 
-from agents.soma_intake.extractor import BUSINESS_TYPES
+from agents.insurance_intake.extractor import BUSINESS_TYPES
 
 TWILIO_AUTH_TOKEN = "test-auth-token-not-a-secret"
-SMS_WEBHOOK_URL = "https://soma.example/soma/inbound/sms"
+SMS_WEBHOOK_URL = "https://intake.example/intake/inbound/sms"
 AGENCY_PHONE = "+18005550100"
 
 FIRST = ["Rosa", "Daniel", "Priya", "Marcus", "Elena", "Tomas", "Grace", "Hiro", "Amara", "Luca", "Nadia", "Owen",
@@ -127,11 +127,11 @@ def sms_payload(rng: random.Random, frm: str, body: str) -> dict:
 
 def email_payload(rng: random.Random, truth: dict, when: datetime, subject: str, body: str, quoted: str = "") -> dict:
     domain = truth["contact_email"].split("@")[1]
-    raw = (f"From: {truth['contact_name']} <{truth['contact_email']}>\nTo: quotes@soma.example\nSubject: {subject}\n"
+    raw = (f"From: {truth['contact_name']} <{truth['contact_email']}>\nTo: quotes@intake.example\nSubject: {subject}\n"
            f"Date: {format_datetime(when)}\nMessage-ID: <{rng.getrandbits(48):x}@{domain}>\nMIME-Version: 1.0\n"
            f"Content-Type: text/plain; charset=utf-8\n\n{body}\n")
     if quoted:
-        raw += "\nOn Mon, Soma Intake <quotes@soma.example> wrote:\n" + "\n".join("> " + l for l in quoted.splitlines()) + "\n"
+        raw += "\nOn Mon, Intake Desk <quotes@intake.example> wrote:\n" + "\n".join("> " + l for l in quoted.splitlines()) + "\n"
     return {"raw": raw}
 
 
@@ -333,7 +333,7 @@ def build_case(n: int, scenario: str, rng: random.Random, start: date, style: st
     sms_body = (f"{first} @ {part} here. " if style == "heldout" else f"Hi it's {first} from {part}. ") + " ".join(sms_lines)
     case.payloads.append({"day": 2, "channel": "sms", "payload": sms_payload(rng, truth["business_phone"], sms_body)})
 
-    turns = [("agent", f"Thanks for calling Soma, this is Jordan. Who am I speaking with?"),
+    turns = [("agent", f"Thanks for calling the insurance intake desk, this is Jordan. Who am I speaking with?"),
              ("caller", f"Hi, this is {first} {last} from {truth['applicant_name']}.")]
     q = {"limits": "What liability limits are you looking for?", "gl_deductible": "Any preference on the deductible?",
          "prior_losses_3y": "Any claims or losses in the last three years?", "prior_carrier": "Who are you insured with today?",

@@ -4,7 +4,7 @@ PY      ?= .venv/bin/python
 PORT    ?= 8000
 UV      := $(shell command -v uv 2>/dev/null)
 
-.PHONY: help fresh-traces setup seed reseed run stop conformance redteam metrics test check clean wordlist phase2 copilot-scan phase3 ad-economy soma-eval scorecard faults
+.PHONY: help fresh-traces setup seed reseed run stop conformance redteam metrics test check clean wordlist phase2 copilot-scan phase3 ad-economy intake-eval scorecard faults
 
 help:
 	@echo "make setup        create .venv and install deps (uv if present, else venv+pip)"
@@ -17,14 +17,14 @@ help:
 	@echo "make check        test + conformance (the CI gate)"
 	@echo "make phase2       run Copilot + Level Factory end to end, print the scorecard (server must be stopped)"
 	@echo "make copilot-scan funnel anomaly scan only (read-only workflow)"
-	@echo "make phase3       ad economy scorecard + Soma 50-submission eval (server must be stopped)"
+	@echo "make phase3       ad economy scorecard + insurance intake 50-submission eval (server must be stopped)"
 	@echo "make scorecard    re-run every eval and rebuild docs/scorecard.json + SCORECARD.md (~2 min, server stopped)"
 	@echo "make faults       run the 4 production fault drills from the CLI (server stopped)"
 	@echo "open http://localhost:8000 after make run -> Evaluator Control Center"
 
 # Published numbers are generated with the deterministic mock so they reproduce bit-for-bit even on a machine
 # that has an API key exported. Run e.g. `LLM_PROVIDER=auto make phase2` to exercise the real provider instead.
-scorecard phase2 phase3 ad-economy soma-eval faults conformance test check: export LLM_PROVIDER ?= mock
+scorecard phase2 phase3 ad-economy intake-eval faults conformance test check: export LLM_PROVIDER ?= mock
 
 setup:
 ifdef UV
@@ -69,10 +69,10 @@ copilot-scan:
 ad-economy:
 	$(PY) scripts/run_ad_economy_sim.py --out docs/phase3_ad_economy_scorecard.md
 
-soma-eval:
-	$(PY) scripts/run_soma_eval.py --out docs/phase3_soma_eval_scorecard.md
+intake-eval:
+	$(PY) scripts/run_intake_eval.py --out docs/phase3_intake_eval_scorecard.md
 
-phase3: ad-economy soma-eval
+phase3: ad-economy intake-eval
 
 # traces.duckdb is wiped first: the latency / cost-per-task rows describe THIS run, not an accumulation of old ones
 fresh-traces:

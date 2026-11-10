@@ -43,8 +43,8 @@
       "caption": "72h incident timeline vs unguarded; TS floor alone +0.5% vs $2 default; UA ROAS +15.4%"
     },
     {
-      "key": "soma_f1",
-      "label": "Soma ACORD extraction F1",
+      "key": "intake_f1",
+      "label": "Intake ACORD extraction F1",
       "value": "99.8%",
       "caption": "held-out phrasing 91.7% (portal fill 8/38); handoff recall 100%"
     }
@@ -527,7 +527,7 @@
     },
     "ua_lift_vs_uniform": 0.15357036151777703
   },
-  "soma": {
+  "intake": {
     "dev": {
       "extraction": {
         "precision": 1.0,

@@ -7,7 +7,7 @@ Role & contracts
   docs/scorecard.json (read by /api/cc/overview) and docs/SCORECARD.md:
     docs/phase2_scorecard.json             (make phase2)
     docs/phase3_ad_economy_scorecard.json  (make ad-economy)
-    docs/phase3_soma_eval_scorecard.json   (make soma-eval)
+    docs/phase3_intake_eval_scorecard.json   (make intake-eval)
     conformance suite                      (re-run here, ~4 s)
     data/traces.duckdb                     (p50/p95 per task, LLM cost per task)
     level-taste analysis                   (calibration points + critic
@@ -133,7 +133,7 @@ def main() -> int:
         except duckdb.IOException as e:
             print(f"ERROR: {DatabaseLockedError(tdb, str(e))}", file=sys.stderr)
             return 2
-    p2, ad, soma = load("phase2_scorecard.json"), load("phase3_ad_economy_scorecard.json"), load("phase3_soma_eval_scorecard.json")
+    p2, ad, intake = load("phase2_scorecard.json"), load("phase3_ad_economy_scorecard.json"), load("phase3_intake_eval_scorecard.json")
     conf = run_suite(Tracer(InMemoryExporter()))
     tr = trace_stats()
     taste = level_taste(p2)
@@ -159,12 +159,12 @@ def main() -> int:
              "caption": f"harmful variant rolled back on day {pm1['harmful_rollback_day']}; shipped variant D1 {100 * pm1['good_d1_delta']:+.1f}pp (always-valid CI spans 0: not claimed)"} if pm1 else need("phase2"))},
         {"key": "arpdau", "label": "ARPDAU lift: guarded bandit ops",
          **({"value": f"{100 * ad['guarded_arpdau_lift']:+.1f}%", "caption": f"72h incident timeline vs unguarded; TS floor alone {100 * ad['ts_vs_default_floor_lift']:+.1f}% vs $2 default; UA ROAS {100 * ad['ua_lift_vs_uniform']:+.1f}%"} if ad else need("ad-economy"))},
-        {"key": "soma_f1", "label": "Soma ACORD extraction F1",
-         **({"value": pct(soma["dev"]["extraction"]["f1"]), "caption": f"held-out phrasing {pct(soma['heldout']['extraction']['f1'])} (portal fill {soma['heldout']['portal_fill']['succeeded']}/{soma['heldout']['portal_fill']['should_submit']}); handoff recall {pct(soma['heldout']['handoff']['recall'], 0)}"} if soma else need("soma-eval"))},
+        {"key": "intake_f1", "label": "Intake ACORD extraction F1",
+         **({"value": pct(intake["dev"]["extraction"]["f1"]), "caption": f"held-out phrasing {pct(intake['heldout']['extraction']['f1'])} (portal fill {intake['heldout']['portal_fill']['succeeded']}/{intake['heldout']['portal_fill']['should_submit']}); handoff recall {pct(intake['heldout']['handoff']['recall'], 0)}"} if intake else need("intake-eval"))},
     ]
     out = {"headline": head, "conformance": s_all, "traces": tr, "level_taste": taste,
            "phase2": p2, "ad_economy": {k: v for k, v in (ad or {}).items() if k != "checks"},
-           "soma": {k: {kk: soma[k][kk] for kk in ("extraction", "portal_fill", "turns", "handoff", "calibration")} for k in ("dev", "heldout")} if soma else None}
+           "intake": {k: {kk: intake[k][kk] for kk in ("extraction", "portal_fill", "turns", "handoff", "calibration")} for k in ("dev", "heldout")} if intake else None}
     (DOCS / "scorecard.json").write_text(json.dumps(out, indent=2, default=str))
     md = ["# Scorecard", "", "| metric | value | what it means |", "|---|---|---|"] + \
          [f"| {h['label']} | **{h['value']}** | {h['caption']} |" for h in head]

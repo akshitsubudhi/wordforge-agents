@@ -1,6 +1,6 @@
-# Soma Intake Evaluation
+# Insurance Intake Evaluation
 
-_50 synthetic submissions, 6.1s, deterministic extractor (no LLM)._
+_50 synthetic submissions, 5.2s, deterministic extractor (no LLM)._
 
 ## Headline metrics
 

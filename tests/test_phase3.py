@@ -1,6 +1,6 @@
 """
 ================================================================================
-BLOCK: Phase 3 Test Suite (Ad Economy + Soma Intake)
+BLOCK: Phase 3 Test Suite (Ad Economy + Insurance Intake)
 --------------------------------------------------------------------------------
 Role & contracts
   Covers auction theory checks, bandits, EWMA detection and guarded ops
@@ -32,10 +32,10 @@ from agents.ad_economy.auction_sim import (
 from agents.ad_economy.bandit_agent import (
     AdOpsAgent, EWMADetector, NIGArm, _cholesky, _inverse, run_ops_scenario, run_ua_bandit, tune_floor,
 )
-from agents.soma_intake.extractor import extract, normalize_numbers, split_sentences, InboundMessage
-from agents.soma_intake.portal_automation import PortalClient, get_submission, portal_app
-from agents.soma_intake.synthetic import TWILIO_AUTH_TOKEN, build_cases, sms_payload
-from agents.soma_intake.workflow import (
+from agents.insurance_intake.extractor import extract, normalize_numbers, split_sentences, InboundMessage
+from agents.insurance_intake.portal_automation import PortalClient, get_submission, portal_app
+from agents.insurance_intake.synthetic import TWILIO_AUTH_TOKEN, build_cases, sms_payload
+from agents.insurance_intake.workflow import (
     EventStore, IntakeEngine, SignatureError, fold, normalize_email, normalize_sms, normalize_voice,
 )
 from core.db import TelemetryDB, open_rw
@@ -224,7 +224,7 @@ def _ingest(eng, ch, payload, when):
 def test_case_survives_restarts_and_dedupes_redelivery(data_dir, tracer):
     store = EventStore(data_dir / "s.sqlite")
     case = next(c for c in build_cases(50) if c.scenario == "clean")
-    from scripts.run_soma_eval import run_case
+    from scripts.run_intake_eval import run_case
 
     r = run_case(case, store, tracer)
     assert r["state"].status == "SUBMITTED" and r["restarts"] >= 3
@@ -239,7 +239,7 @@ def test_case_survives_restarts_and_dedupes_redelivery(data_dir, tracer):
 
 
 def test_crash_between_start_and_complete_is_exactly_once(data_dir, tracer):
-    from scripts.run_soma_eval import run_case
+    from scripts.run_intake_eval import run_case
 
     store = EventStore(data_dir / "s.sqlite")
     case = next(c for c in build_cases(50) if c.scenario == "clean")
@@ -252,7 +252,7 @@ def test_crash_between_start_and_complete_is_exactly_once(data_dir, tracer):
 
 
 def test_handoffs_high_risk_and_ambiguous(data_dir, tracer):
-    from scripts.run_soma_eval import run_case
+    from scripts.run_intake_eval import run_case
 
     store = EventStore(data_dir / "s.sqlite")
     cases = build_cases(50)
@@ -300,33 +300,33 @@ def test_http_routes(data_dir, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    import agents.soma_intake.workflow as wfm
-    from agents.soma_intake.portal_automation import portal_router
+    import agents.insurance_intake.workflow as wfm
+    from agents.insurance_intake.portal_automation import portal_router
 
     monkeypatch.setattr(wfm, "_engine", None)
-    monkeypatch.setenv("TWILIO_WEBHOOK_URL", "http://testserver/soma/inbound/sms")
+    monkeypatch.setenv("TWILIO_WEBHOOK_URL", "http://testserver/intake/inbound/sms")
     app = FastAPI()
     app.include_router(wfm.router)
     app.include_router(portal_router)
     cli = TestClient(app)
     c = build_cases(3)[0]
-    cid = cli.post("/soma/inbound/email", content=c.payloads[0]["payload"]["raw"]).json()["case_id"]
+    cid = cli.post("/intake/inbound/email", content=c.payloads[0]["payload"]["raw"]).json()["case_id"]
     sp = sms_payload(random.Random(1), c.truth["business_phone"], "Our EIN is 12-3456789.")
-    from agents.soma_intake.synthetic import twilio_signature
+    from agents.insurance_intake.synthetic import twilio_signature
     from urllib.parse import urlencode
-    sig = twilio_signature("http://testserver/soma/inbound/sms", sp["form"])
-    ok = cli.post("/soma/inbound/sms", content=urlencode(sp["form"]),
+    sig = twilio_signature("http://testserver/intake/inbound/sms", sp["form"])
+    ok = cli.post("/intake/inbound/sms", content=urlencode(sp["form"]),
                   headers={"Content-Type": "application/x-www-form-urlencoded", "X-Twilio-Signature": sig})
-    forged = cli.post("/soma/inbound/sms", content=urlencode(sp["form"]),
+    forged = cli.post("/intake/inbound/sms", content=urlencode(sp["form"]),
                       headers={"Content-Type": "application/x-www-form-urlencoded", "X-Twilio-Signature": "AAAA"})
     assert ok.status_code == 200 and "<Response>" in ok.text and forged.status_code == 403
-    view = cli.get(f"/soma/cases/{cid}").json()
+    view = cli.get(f"/intake/cases/{cid}").json()
     assert view["fields"]["fein"]["value"] == "12-3456789" and view["fields"]["fein"]["citations"][0]["channel"] == "sms"
     assert cli.get("/mock-carrier-portal").status_code == 200
 
 
-def test_soma_eval_thresholds():
-    from scripts.run_soma_eval import evaluate
+def test_intake_eval_thresholds():
+    from scripts.run_intake_eval import evaluate
 
     r = evaluate(50)
     assert r["extraction"]["f1"] >= 0.95 and r["portal_fill"]["rate"] >= 0.95

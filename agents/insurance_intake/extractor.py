@@ -694,7 +694,7 @@ def llm_candidates(messages: list[InboundMessage], llm, budget=None, tracer=None
               f"{[f.key for f in FIELDS]}.\n\n{corpus[:12000]}")
     try:
         resp = guarded_completion(llm, [Message("user", prompt)], budget=budget, tracer=tracer, max_output_tokens=1200,
-                                  purpose="soma_extractor")
+                                  purpose="intake_extractor")
         data = _json.loads(re.search(r"\{.*\}", resp.text, re.S).group())
     except Exception:  # BudgetExceeded, provider or parse failure: the deterministic extractor stands alone
         return []

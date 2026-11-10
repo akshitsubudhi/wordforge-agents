@@ -9,7 +9,7 @@
 | CUPED variance reduction | **7.1%** | ρ=0.26 on the seeded cohort (8,429→7,774 users); ≈ρ² as theory says |
 | D1 retention: guardrail catch | **-4.7pp caught** | harmful variant rolled back on day 2; shipped variant D1 +0.9pp (always-valid CI spans 0: not claimed) |
 | ARPDAU lift: guarded bandit ops | **+37.4%** | 72h incident timeline vs unguarded; TS floor alone +0.5% vs $2 default; UA ROAS +15.4% |
-| Soma ACORD extraction F1 | **99.8%** | held-out phrasing 91.7% (portal fill 8/38); handoff recall 100% |
+| Intake ACORD extraction F1 | **99.8%** | held-out phrasing 91.7% (portal fill 8/38); handoff recall 100% |
 
 ## Level taste
 

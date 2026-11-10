@@ -47,9 +47,9 @@ liveops-agent-platform/
 │   ├── ad_economy/               ── Project 3 ──
 │   │   ├── auction_sim.py        5-network mediation: waterfall (naive/strategic) vs 1st/2nd-price header bidding, BNE shading
 │   │   └── bandit_agent.py       NIG Thompson floors, EWMA detectors, guarded rollback + quarantine, LinTS UA allocator
-│   ├── soma_intake/              ── Project 5 ──
+│   ├── insurance_intake/              ── Project 5 ──
 │   │   ├── extractor.py          ACORD 125/126 rules, spoken-number normalisation, confidence + provenance, verified-quote LLM pass
-│   │   ├── workflow.py           channel normalisers (email / Twilio SMS / voice), SQLite event store, durable engine, /soma routes
+│   │   ├── workflow.py           channel normalisers (email / Twilio SMS / voice), SQLite event store, durable engine, /intake routes
 │   │   ├── portal_automation.py  mock carrier portal (/mock-carrier-portal) + label-driven form filler
 │   │   └── synthetic.py          50-case benchmark (development + held-out phrasing), customer simulator
 │   └── level_factory/            ── Project 2 ──
@@ -58,7 +58,7 @@ liveops-agent-platform/
 │       └── critic_and_eval.py    LLM/heuristic generator · 4-rubric critic · 100-level golden eval · daily shipper
 ├── scripts/verify_phase2.py      runs both pipelines, prints the Markdown scorecard (docs/phase2_scorecard.md)
 ├── scripts/run_ad_economy_sim.py Project 3 scorecard (docs/phase3_ad_economy_scorecard.md)
-├── scripts/run_soma_eval.py      Project 5 50-submission eval (docs/phase3_soma_eval_scorecard.md)
+├── scripts/run_intake_eval.py      Project 5 50-submission eval (docs/phase3_intake_eval_scorecard.md)
 └── tests/test_phase2.py, tests/test_phase3.py
 ```
 
@@ -103,7 +103,7 @@ flowchart LR
     R <--> LLM
     RES --> SBX
     R --> TR -- batched --> SDB
-    AG["Phase 2-5 agents<br/>(Copilot, Level Factory,<br/>Ad Economy, Soma Intake)"] -.run on.-> R
+    AG["Phase 2-5 agents<br/>(Copilot, Level Factory,<br/>Ad Economy, Insurance Intake)"] -.run on.-> R
 ```
 
 ## Block-by-block failure-mitigation matrix
@@ -246,7 +246,7 @@ flowchart LR
   exposures from the game use the same table and the same evaluator.
 
 
-## Phase 3: Ad Economy (Project 3) and Soma Intake (Project 5)
+## Phase 3: Ad Economy (Project 3) and Insurance Intake (Project 5)
 
 ```mermaid
 flowchart LR
@@ -261,7 +261,7 @@ flowchart LR
         LTV[(telemetry.duckdb<br/>measured D1 LTV)] --> UA[LinTS UA allocator]
         UA -->|≤ $5k per call · ≤ 50% per channel| ALLOC[(ua_allocations)]
     end
-    subgraph Soma["Project 5: Soma intake"]
+    subgraph Intake["Project 5: Insurance intake"]
         E[e-mail RFC 5322] --> N[normalisers]
         S[Twilio SMS + HMAC] --> N
         V[voice transcript + ASR conf] --> N
@@ -284,14 +284,14 @@ flowchart LR
 | `ad_economy/bandit_agent.py`: floors | NIG Thompson sampling over revenue per request | Exploring bad floors costs revenue | Regret is 8% of uniform exploration; floor step guard ±$12 (none) |
 | `ad_economy/bandit_agent.py`: ops | Confirmed EWMA alarms; frozen baseline; re-baseline after every config change | Bad config push; dead network; market-wide drop; false quarantine after our own change | Rollback to last-known-good only after a recent change, with a cooldown; a zero-fill outage during a floor trial rolls back to the baseline floor first (no cooldown), then quarantines; quarantine only a single-network zero-fill or share drop while the total is healthy; otherwise escalate (none) |
 | `ad_economy/bandit_agent.py`: UA | LinTS with daily posterior refresh | Over-concentration; oversized commitments | ≤ 50% of the day per channel; L1 currency cap of $5k per `allocate_ua_budget` call (none) |
-| `soma_intake/workflow.py` | Event history; activity started/completed; idempotency keys; pure `decide()` | Process crash; webhook redelivery; forged SMS | `recover()` re-runs a half-done activity with the same id, and downstream de-duplicates it; message-id de-dup; HMAC check returns 403 (none) |
-| `soma_intake/extractor.py` | Rule × channel × ASR × hedge confidence; noisy-OR; correction cues | Vague, conflicting or unseen phrasing | Below 0.80 → follow-up (max 3) → human handoff with reasons and citations (reviewer) |
-| `soma_intake/portal_automation.py` | Label-driven mapping; per-load HMAC field names; client_ref idempotency | Portal relabels fields; duplicate filing; rejected values | Fuzzy label map; same submission id on retry; field errors route the case to a human (reviewer) |
+| `insurance_intake/workflow.py` | Event history; activity started/completed; idempotency keys; pure `decide()` | Process crash; webhook redelivery; forged SMS | `recover()` re-runs a half-done activity with the same id, and downstream de-duplicates it; message-id de-dup; HMAC check returns 403 (none) |
+| `insurance_intake/extractor.py` | Rule × channel × ASR × hedge confidence; noisy-OR; correction cues | Vague, conflicting or unseen phrasing | Below 0.80 → follow-up (max 3) → human handoff with reasons and citations (reviewer) |
+| `insurance_intake/portal_automation.py` | Label-driven mapping; per-load HMAC field names; client_ref idempotency | Portal relabels fields; duplicate filing; rejected values | Fuzzy label map; same submission id on retry; field errors route the case to a human (reviewer) |
 
 ### Measured results
 
 From `make phase3`. Full reports: [ad economy](phase3_ad_economy_scorecard.md),
-[Soma eval](phase3_soma_eval_scorecard.md).
+[intake eval](phase3_intake_eval_scorecard.md).
 
 | Check | Result |
 |---|---|
@@ -301,10 +301,10 @@ From `make phase3`. Full reports: [ad economy](phase3_ad_economy_scorecard.md),
 | Thompson sampling, reserve floor | Finds the oracle floor ($6); regret $3.16 vs $38.36 for uniform. Floors $0–6 are within 0.3% of each other. |
 | 72h guarded operations | Bad floor rolled back in 1h; dark network quarantined in the same hour and restored after recovery; market drop escalated; revenue +37% vs unguarded |
 | UA LinTS (60 days, $20k/day) | ROAS +15% vs uniform; 98% of the oracle |
-| Soma, development phrasing (50 cases) | Extraction F1 99.8%; portal fill 38/38; 5.1 turns; handoff precision 12/12, recall 12/12; 150 restarts; 6/6 crashes exactly-once |
-| Soma, **held-out phrasing** (50 cases) | Extraction F1 91.7%; **portal fill 8/38**; handoff recall 12/12; handoff precision 12/37 |
+| Intake, development phrasing (50 cases) | Extraction F1 99.8%; portal fill 38/38; 5.1 turns; handoff precision 12/12, recall 12/12; 150 restarts; 6/6 crashes exactly-once |
+| Intake, **held-out phrasing** (50 cases) | Extraction F1 91.7%; **portal fill 8/38**; handoff recall 12/12; handoff precision 12/37 |
 
-**Read the Soma numbers carefully:**
+**Read the intake numbers carefully:**
 
 - **Development phrasing:** the 99.8% is measured on wording drawn from the same templates
   the rules were written against. It shows the pipeline works end to end, not that it generalises.
