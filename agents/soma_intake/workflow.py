@@ -79,6 +79,7 @@ from agents.soma_intake.extractor import (
 from agents.soma_intake.portal_automation import PORTAL_URL, PortalClient
 from core.config import get_settings
 from core.harness.llm import MockLLM, is_real_llm
+from core.harness.resilience import BudgetGuard
 from core.harness.redteam_guard import READ_WRITE, AgentPolicy, ApprovalRequest, DefenseConfig
 from core.harness.runner import AgentRunner, AgentSpec
 from core.harness.telemetry import Tracer, default_tracer
@@ -359,6 +360,7 @@ class IntakeEngine:
         self.store, self.portal, self.llm = store, portal or PortalClient(), llm
         self.crash_hook = crash_hook
         self._ext_cache: dict[str, CaseExtraction] = {}
+        self._llm_budgets: dict[str, BudgetGuard] = {}
         self.runner = AgentRunner(
             AgentSpec("soma_intake", self.SYSTEM,
                       AgentPolicy(INTAKE_TOOLS, get_settings().data_dir, allowed_url_hosts=frozenset({"carrier.mock"}))),
@@ -378,7 +380,11 @@ class IntakeEngine:
     def extraction(self, st: CaseState) -> CaseExtraction:
         key = st.case_id + ":" + ",".join(m.message_id for m in st.messages)
         if key not in self._ext_cache:
-            self._ext_cache[key] = extract(st.messages, self.llm, tracer=self.runner.tracer)
+            budget = None
+            if is_real_llm(self.llm):   # ONE spend cap per case (HARNESS_MAX_RUN_USD), not a fresh one per call
+                cfg = get_settings()
+                budget = self._llm_budgets.setdefault(st.case_id, BudgetGuard(cfg.max_run_usd, cfg.max_run_tokens, 10_000))
+            self._ext_cache[key] = extract(st.messages, self.llm, budget, tracer=self.runner.tracer)
         return self._ext_cache[key]
 
     # ---------------------------------------------------------------- policy approver (L3 gate)

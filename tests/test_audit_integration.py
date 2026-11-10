@@ -454,6 +454,73 @@ def test_copilot_summary_and_soma_extractor_use_the_harness(data_dir, lex, monke
         guarded_completion(get_llm(), [Message("user", "x" * 4000)], budget=BudgetGuard(max_usd=1e-6), max_output_tokens=1200)
 
 
+def test_soma_extractor_survives_everything_a_real_model_returns(monkeypatch):
+    """Regression (found with a live model): a list where a scalar was expected crashed resolve() with
+    'unhashable type: list'. Model output is untrusted: wrong types, shapes and vocabulary are dropped."""
+    from agents.soma_intake.extractor import SPEC, coerce_llm_value, extract
+    from agents.soma_intake.workflow import normalize_email
+
+    ok = [("employees_full_time", 12, [12]), ("employees_full_time", "12", [12]), ("employees_full_time", 12.0, [12]),
+          ("annual_revenue", "$3.1M", [3_100_000]), ("annual_revenue", 3100000, [3_100_000]),
+          ("policy_effective_date", "2027-01-01", ["2027-01-01"]), ("business_phone", "(415) 555-0106", ["+14155550106"]),
+          ("contact_email", "Owen@Juniper.example", ["owen@juniper.example"]), ("mailing_state", "california", ["CA"]),
+          ("mailing_state", "ca", ["CA"]), ("entity_type", "LLC", ["llc"]), ("mailing_zip", "94197", ["94197"]),
+          ("lines_of_business", ["General Liability", "property", "pet insurance"], ["general_liability", "property"]),
+          ("hazards", "liquor", ["liquor"])]
+    for key, raw, want in ok:
+        assert coerce_llm_value(SPEC[key], raw) == want, (key, raw)
+    bad = [("employees_full_time", [12, 3]), ("employees_full_time", {"n": 12}), ("employees_full_time", True),
+           ("employees_full_time", -4), ("employees_full_time", 12.5), ("employees_full_time", "a dozen"),
+           ("annual_revenue", "lots"), ("policy_effective_date", "1/1"), ("policy_effective_date", "2027-13-40"),
+           ("business_phone", "call me"), ("contact_email", "not an email"), ("mailing_state", "ZZ"),
+           ("entity_type", "nonprofit cooperative"), ("mailing_zip", "9419"), ("applicant_name", ["Acme", "LLC"]),
+           ("applicant_name", ""), ("applicant_name", "x" * 500), ("hazards", ["dragons"]), ("fein", None)]
+    for key, raw in bad:
+        assert coerce_llm_value(SPEC[key], raw) == [], (key, raw)
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    m = normalize_email("From: Owen <owen@juniper.example>\nSubject: quote\nMessage-ID: <a1@x>\n\n"
+                        "I run Juniper Books LLC in San Francisco with 16 employees. We want a GL policy. Phone: (415) 555-0106")
+    hostile = {"applicant_name": {"value": "Juniper Books, L.L.C.", "quote": "Juniper Books LLC"},      # other spelling
+               "employees_full_time": {"value": [16], "quote": "16 employees"},                          # the crash
+               "hazards": {"value": [["liquor"], {"a": 1}, 7], "quote": "GL policy"},
+               "lines_of_business": {"value": ["general_liability"], "quote": "GL policy"},
+               "annual_revenue": {"value": {"usd": 5}, "quote": "16 employees"},
+               "business_description": {"value": "Space elevator operator", "quote": "Juniper Books LLC"},  # derived field
+               "prior_losses_3y": {"value": 2, "quote": "this text is not in any message"},
+               "mailing_state": {"value": "CA", "quote": "San Francisco"},
+               "nonsense": "not even an object", "fein": 5}
+    monkeypatch.setattr(llm_mod, "_http_post", FakeProvider([openai_text(json.dumps(hostile), 400, 200)]))
+    rules_only = extract([m])
+    ext = extract([m], get_llm(), BudgetGuard(max_usd=0.05), Tracer(InMemoryExporter()))        # must not raise
+    assert ext.value("applicant_name") == rules_only.value("applicant_name") == "Juniper Books LLC"
+    assert ext.fields["applicant_name"].status == rules_only.fields["applicant_name"].status   # no manufactured conflict
+    assert ext.value("business_description") == rules_only.value("business_description")
+    assert ext.value("prior_losses_3y") is None and ext.value("annual_revenue") is None and ext.value("hazards") in (None, [])
+    assert ext.value("mailing_state") == "CA" and ext.value("lines_of_business") == ["general_liability"]
+    for junk in ("[]", "not json at all", '{"employees_full_time": [1, 2]}', '["a", "b"]', ""):
+        monkeypatch.setattr(llm_mod, "_http_post", FakeProvider([openai_text(junk)]))
+        assert extract([m], get_llm(), BudgetGuard(max_usd=0.05)).value("applicant_name") == "Juniper Books LLC"
+
+
+def test_soma_engine_caps_model_spend_per_case(monkeypatch, tmp_path):
+    from agents.soma_intake.workflow import EventStore, IntakeEngine, normalize_email
+
+    monkeypatch.setenv("LIVEOPS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("HARNESS_MAX_RUN_USD", "0.004")
+    api = FakeProvider([openai_text("{}", 2000, 500)])                       # $0.0016 per call at gpt-4.1-mini prices
+    monkeypatch.setattr(llm_mod, "_http_post", api)
+    eng = IntakeEngine(EventStore(tmp_path / "soma.sqlite"), llm=get_llm(), tracer=Tracer(InMemoryExporter()))
+    case_id = None
+    for i in range(6):   # six messages on one case -> six extractions, but the per-case cap stops the model calls
+        case_id = eng.handle_inbound(normalize_email(f"From: Owen <owen@juniper.example>\nSubject: quote\nMessage-ID: <m{i}@x>\n\n"
+                                                     f"Juniper Books LLC here, note {i}: we have {10 + i} employees.")) or case_id
+    budget = eng._llm_budgets[case_id]
+    assert budget.spent_usd <= 0.004 and len(api.requests) == budget.llm_calls < 6
+    assert eng.state(case_id).status in ("AWAITING_CUSTOMER", "HUMAN_HANDOFF", "COLLECTING")   # the case kept moving
+
+
 # ============================================================================ 5. DuckDB: one writer, no lock crashes
 def test_traces_db_survives_concurrent_flushes_and_reads_in_one_process(tmp_path):
     """Regression: /api/cc/traces/recent returned 500 ('Unique file handle conflict') when a span flush and a

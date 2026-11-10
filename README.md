@@ -178,16 +178,19 @@ These are stated plainly, because an evaluator will find them anyway:
   - The confidence gate fails safe 25 times, but **5 cases submit a wrong full-time headcount at
     confidence ≥ 0.80**.
   - The root causes are documented and deliberately not tuned against the held-out set. The next step
-    is the verified-quote LLM extractor, measured on a *fresh* held-out set.
+    is measuring the verified-quote LLM extractor (now type-checked, see below) on a *fresh* held-out set.
 - **Golden labels** come from construction, not from people. Drop `data/golden_levels_human.csv` in
   place to re-score against human labels.
-- **No successful real-model completion has been observed.** The provider path is wired and tested at the HTTP
-  boundary (URL, auth header, payload, tool round-trip for both Anthropic and OpenAI), and live requests to
-  `api.openai.com` were made through the harness and the running Control Center. That account had no credits, so
-  every answer was HTTP 429 `insufficient_quota`: the jobs finished on the heuristic, the `llm.call` spans carry
-  `error_class=quota_exhausted`, and the banner appeared. Prompt quality and real-model latency are unmeasured.
-  With a key set, the Soma intake server sends customer message text to the provider for the optional extraction
-  pass; set `LLM_PROVIDER=mock` to keep it local.
+- **Real-model coverage is a smoke test, not an evaluation.** With `OPENAI_API_KEY` set (`gpt-4.1-mini`), the agent
+  loop with a tool round-trip, the Level Factory (generator and critic), the copilot summary, the Soma extractor and
+  a Control Center factory job all completed through the harness: about 80 calls, roughly 1.4 s each, about $0.04
+  in total. The scorecard above is still the deterministic mock; nothing in it was measured with a real model.
+  - The Soma model pass was tried on only 3 held-out cases. It turned one confidently-wrong headcount into a
+    flagged conflict and filled some gaps, but sent one previously submitted case to a human, at about $0.007 per
+    case. That is an anecdote; the held-out set would need a full run to claim anything.
+  - Anthropic is tested at the HTTP boundary only (no key was available).
+  - With a key set, the Soma intake server sends customer message text to the provider for the extraction pass;
+    set `LLM_PROVIDER=mock` to keep it local. Model spend is capped per case by `HARNESS_MAX_RUN_USD`.
 - **The mSPRT mixing variance τ** is set from the observed control mean (τ = MDE × control mean) rather than fixed
   before the experiment. The false-positive rates quoted above were measured with a fixed τ; the data-dependent
   choice has not been measured separately, and a pre-registered τ would be cleaner.
@@ -199,7 +202,7 @@ These are stated plainly, because an evaluator will find them anyway:
 | Command | What it does |
 |---|---|
 | `make run` | Server + Control Center on :8000 |
-| `make test` | 152 tests: the 4 phases plus the audit suites (math, guardrail proofs, integration). About 45 s on 4 cores (one worker per core, one test file per worker; `pytest -n0` runs them serially in about 2 minutes) |
+| `make test` | 154 tests: the 4 phases plus the audit suites (math, guardrail proofs, integration). About 45 s on 4 cores (one worker per core, one test file per worker; `pytest -n0` runs them serially in about 2 minutes) |
 | `make check` | Tests + guardrail conformance (the CI gate) |
 | `make faults` | The five fault drills from a terminal |
 | `make phase2` / `make phase3` | Scorecards for Projects 1–2 and Projects 3 and 5 (server stopped) |
