@@ -1,6 +1,6 @@
 """
 ================================================================================
-BLOCK: Insurance Intake Evaluation Harness (50 submissions, end to end)
+BLOCK: Commercial Insurance Intake Agent - Evaluation Harness (50 submissions, end to end)
 --------------------------------------------------------------------------------
 Role & contracts
   Drives every synthetic case (agents/insurance_intake/synthetic.py) through the
@@ -255,7 +255,7 @@ def table(headers, rows) -> str:
 
 def render(r: dict) -> str:
     e, p, h, d = r["extraction"], r["portal_fill"], r["handoff"], r["durability"]
-    md = ["# Insurance Intake Evaluation", "", f"_{r['n']} synthetic submissions, {r['seconds']}s, deterministic extractor (no LLM)._", "",
+    md = ["# Commercial Insurance Intake Agent - Evaluation", "", f"_{r['n']} synthetic submissions, {r['seconds']}s, deterministic extractor (no LLM)._", "",
           "## Headline metrics", "",
           table(["metric", "value"], [
               ["Extraction F1 (micro, 24 ACORD fields)", f"{100 * e['f1']:.1f}%  (P {100 * e['precision']:.1f}% / R {100 * e['recall']:.1f}%)"],
@@ -317,7 +317,7 @@ def render_generalisation(dev: dict, ho: dict) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Insurance intake 50-submission evaluation")
+    ap = argparse.ArgumentParser(description="Commercial Insurance Intake Agent: 50-submission evaluation")
     ap.add_argument("--cases", type=int, default=50)
     ap.add_argument("--seed", type=int, default=2026)
     ap.add_argument("--out", type=Path, default=None)

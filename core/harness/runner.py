@@ -8,7 +8,7 @@ Role & contracts
           ToolRegistry, DefenseConfig, budget limits, Tracer, Approver.
   Output: RunResult - final text (post output-filter), every tool call with
           its guard decision, status, cost, tokens, trace_id.
-  Used by: LiveOps Copilot, Level Factory, Ad Economy, Insurance Intake (Phases
+  Used by: LiveOps Copilot, Level Factory, Ad Economy, Commercial Insurance Intake Agent (Phases
           2-3) and the red-team eval - one runtime, one set of guarantees.
 
 Key engineering mechanism (per tool call, in this exact order)

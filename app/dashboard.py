@@ -13,7 +13,7 @@ Role & contracts
                  REAL human approval gate (the job pauses for your click)
     Level Factory  "Generate, Verify & Push Level to Live Game"
     Ad Economy   mechanism comparison, Thompson floors, UA bandit
-    Insurance Intake  one synthetic customer, end to end, day by day
+    Commercial Insurance Intake Agent  one synthetic customer, end to end, day by day
     Fault drills five injected production failures + the guardrail that
                  catches each (app/fault_drills.py)
   Everything runs IN the server process on the server's own DuckDB writer, so

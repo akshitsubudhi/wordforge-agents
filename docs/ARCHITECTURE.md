@@ -103,7 +103,7 @@ flowchart LR
     R <--> LLM
     RES --> SBX
     R --> TR -- batched --> SDB
-    AG["Phase 2-5 agents<br/>(Copilot, Level Factory,<br/>Ad Economy, Insurance Intake)"] -.run on.-> R
+    AG["Phase 2-5 agents<br/>(Copilot, Level Factory,<br/>Ad Economy, Commercial Insurance Intake Agent)"] -.run on.-> R
 ```
 
 ## Block-by-block failure-mitigation matrix
@@ -246,7 +246,7 @@ flowchart LR
   exposures from the game use the same table and the same evaluator.
 
 
-## Phase 3: Ad Economy (Project 3) and Insurance Intake (Project 5)
+## Phase 3: Ad Economy (Project 3) and Commercial Insurance Intake Agent (Project 5)
 
 ```mermaid
 flowchart LR
@@ -261,7 +261,7 @@ flowchart LR
         LTV[(telemetry.duckdb<br/>measured D1 LTV)] --> UA[LinTS UA allocator]
         UA -->|≤ $5k per call · ≤ 50% per channel| ALLOC[(ua_allocations)]
     end
-    subgraph Intake["Project 5: Insurance intake"]
+    subgraph Intake["Project 5: Commercial Insurance Intake Agent"]
         E[e-mail RFC 5322] --> N[normalisers]
         S[Twilio SMS + HMAC] --> N
         V[voice transcript + ASR conf] --> N

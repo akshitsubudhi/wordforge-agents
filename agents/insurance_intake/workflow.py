@@ -1,6 +1,6 @@
 """
 ================================================================================
-BLOCK: Multi-Channel Insurance Intake Workflow (durable, replayable, gated)
+BLOCK: Commercial Insurance Intake Agent - Multi-Channel Workflow (durable, replayable, gated)
 --------------------------------------------------------------------------------
 Role & contracts
   Ingestion normalisers turn provider payloads into InboundMessage:

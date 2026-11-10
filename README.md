@@ -62,7 +62,7 @@ flowchart LR
     T --> C[P1 LiveOps Copilot]
     T --> F[P2 Level Factory]
     T --> A[P3 Ad economy agent]
-    S[Email / Twilio SMS / Voice] --> I[P5 Insurance intake]
+    S[Email / Twilio SMS / Voice] --> I[P5 Commercial Insurance Intake Agent]
     C -->|candidate version + ≤20% flag| G
     F -->|release-gated publish| G
     I -->|label-mapped form fill| P[Mock carrier portal]
@@ -90,7 +90,7 @@ Each block: how it's built, and the one-line hook that stops it failing.
 | **Solver** `agents/level_factory/solver.py` | Trie-pruned DFS proof; every witness path re-checked by the referee | No proof means no publish |
 | **Difficulty + critic** `difficulty_model.py`, `critic_and_eval.py` | Poisson-binomial player model calibrated on telemetry; 4 rubrics including an offensive-word trie | Release gate requires proof + critic in the ledger; a live spike retires the level |
 | **Ad economy** `agents/ad_economy/` | BNE-shaded auctions; NIG Thompson sampling; EWMA detectors; LinTS UA allocator | A dark network rolls any floor on trial back to the baseline config and is quarantined; a revenue alarm rolls back only after a recent change; otherwise escalate |
-| **Insurance intake** `agents/insurance_intake/` | Channel normalisers (Twilio HMAC); event-sourced SQLite; rule extractor with provenance; label-driven portal bot | Replay after a crash, exactly-once; confidence < 0.80 after 3 follow-ups goes to a human |
+| **Commercial Insurance Intake Agent** `agents/insurance_intake/` | Channel normalisers (Twilio HMAC); event-sourced SQLite; rule extractor with provenance; label-driven portal bot | Replay after a crash, exactly-once; confidence < 0.80 after 3 follow-ups goes to a human |
 | **Control Center** `app/dashboard.py`, `app/static/control_center.html` | Single-worker job queue in the server process; polled step logs; human-approval broker | Approvals fail closed after 120 s; jobs never contend for DuckDB |
 
 Deeper diagrams and per-phase failure matrices are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -186,7 +186,7 @@ These are stated plainly, because an evaluator will find them anyway:
   `api.openai.com` were made through the harness and the running Control Center. That account had no credits, so
   every answer was HTTP 429 `insufficient_quota`: the jobs finished on the heuristic, the `llm.call` spans carry
   `error_class=quota_exhausted`, and the banner appeared. Prompt quality and real-model latency are unmeasured.
-  With a key set, the Insurance intake server sends customer message text to the provider for the optional extraction
+  With a key set, the Commercial Insurance Intake Agent server sends customer message text to the provider for the optional extraction
   pass; set `LLM_PROVIDER=mock` to keep it local.
 - **The mSPRT mixing variance τ** is set from the observed control mean (τ = MDE × control mean) rather than fixed
   before the experiment. The false-positive rates quoted above were measured with a fixed τ; the data-dependent

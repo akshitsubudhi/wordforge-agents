@@ -1,6 +1,6 @@
 """
 ================================================================================
-BLOCK: Phase 3 Test Suite (Ad Economy + Insurance Intake)
+BLOCK: Phase 3 Test Suite (Ad Economy + Commercial Insurance Intake Agent)
 --------------------------------------------------------------------------------
 Role & contracts
   Covers auction theory checks, bandits, EWMA detection and guarded ops

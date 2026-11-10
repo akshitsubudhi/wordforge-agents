@@ -161,7 +161,7 @@ section { display: none; } section.show { display: block; }
   <button data-s="copilot">⚗ LiveOps copilot <span class="tag">P1</span></button>
   <button data-s="factory">⚙ Level factory <span class="tag">P2</span></button>
   <button data-s="ads">$ Ad economy <span class="tag">P3</span></button>
-  <button data-s="intake">✉ Insurance intake <span class="tag">P5</span></button>
+  <button data-s="intake">✉ Commercial Insurance Intake Agent <span class="tag">P5</span></button>
   <div class="sep">View</div>
   <button id="themeBtn">◐ Toggle theme</button>
 </nav>
@@ -268,9 +268,9 @@ section { display: none; } section.show { display: block; }
   </div>
 </section>
 
-<!-- ======================= INSURANCE INTAKE ======================= -->
+<!-- ======================= COMMERCIAL INSURANCE INTAKE AGENT ======================= -->
 <section id="s-intake">
-  <h1>Multi-channel insurance intake</h1>
+  <h1>Commercial Insurance Intake Agent</h1>
   <p class="sub">Project 5: e-mail → Twilio SMS → voice call over three days; a fresh engine process each day replays the SQLite event history; ACORD 125/126 extraction with confidence and provenance; confidence-gated human handoff; carrier portal auto-fill.</p>
   <div class="card">
     <div class="row">
@@ -601,7 +601,7 @@ $("#uaBtn").onclick = (e) => { $("#uaOut").innerHTML = "<div class='steps'></div
     `<p class="small muted">D1 LTV per install measured from telemetry; CPI and channel quality are stated assumptions.</p>`;
 } }); };
 
-// ---------------- insurance intake
+// ---------------- Commercial Insurance Intake Agent
 $("#intakeBtn").onclick = (e) => {
   $("#intakeSteps").innerHTML = ""; $("#intakeRecord").innerHTML = "";
   runJob("intake_case", { scenario: $("#intakeScen").value, style: $("#intakeStyle").value }, { btn: e.target, stepsEl: $("#intakeSteps"), onDone: (r) => {

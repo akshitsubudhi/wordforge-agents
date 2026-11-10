@@ -17,7 +17,7 @@ help:
 	@echo "make check        test + conformance (the CI gate)"
 	@echo "make phase2       run Copilot + Level Factory end to end, print the scorecard (server must be stopped)"
 	@echo "make copilot-scan funnel anomaly scan only (read-only workflow)"
-	@echo "make phase3       ad economy scorecard + insurance intake 50-submission eval (server must be stopped)"
+	@echo "make phase3       ad economy scorecard + Commercial Insurance Intake Agent 50-submission eval (server must be stopped)"
 	@echo "make scorecard    re-run every eval and rebuild docs/scorecard.json + SCORECARD.md (~2 min, server stopped)"
 	@echo "make faults       run the 4 production fault drills from the CLI (server stopped)"
 	@echo "open http://localhost:8000 after make run -> Evaluator Control Center"
